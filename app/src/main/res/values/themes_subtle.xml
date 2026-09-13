@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ========================================
+         SUBTLE THEME (Light Dynamic)
+         Live-subtle light variant with minimal motion
+         ======================================== -->
+
+    <style name="CalcVaultTheme.Subtle" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <!-- Subtle Light Backgrounds -->
+        <item name="android:windowBackground">@color/cv_bg_subtle</item>
+        <item name="android:statusBarColor">@color/cv_bg_subtle</item>
+        <item name="android:navigationBarColor">@color/cv_bg_subtle</item>
+        
+        <!-- Subtle Accent -->
+        <item name="colorPrimary">@color/cv_accent_subtle</item>
+        <item name="colorPrimaryDark">@color/cv_accent_subtle_dark</item>
+        <item name="colorAccent">@color/cv_accent_subtle</item>
+    </style>
+
+    <!-- ========================================
+         SUBTLE TEXT STYLES
+         ======================================== -->
+    
+    <style name="TextDisplayLarge.Subtle">
+        <item name="android:textColor">@color/cv_text_subtle_primary</item>
+    </style>
+    
+    <style name="TextDisplayMedium.Subtle">
+        <item name="android:textColor">@color/cv_text_subtle_primary</item>
+    </style>
+    
+    <style name="TextHeadlineLarge.Subtle">
+        <item name="android:textColor">@color/cv_text_subtle_primary</item>
+    </style>
+    
+    <style name="TextTitleLarge.Subtle">
+        <item name="android:textColor">@color/cv_text_subtle_primary</item>
+    </style>
+    
+    <style name="TextTitleMedium.Subtle">
+        <item name="android:textColor">@color/cv_text_subtle_primary</item>
+    </style>
+    
+    <style name="TextBodyLarge.Subtle">
+        <item name="android:textColor">@color/cv_text_subtle_primary</item>
+    </style>
+    
+    <style name="TextBodyMedium.Subtle">
+        <item name="android:textColor">@color/cv_text_subtle_primary</item>
+    </style>
+    
+    <style name="TextBodySmall.Subtle">
+        <item name="android:textColor">@color/cv_text_subtle_secondary</item>
+    </style>
+    
+    <style name="TextLabelMedium.Subtle">
+        <item name="android:textColor">@color/cv_text_subtle_tertiary</item>
+    </style>
+
+    <!-- ========================================
+         SUBTLE BUTTON STYLES
+         ======================================== -->
+    
+    <style name="ButtonPrimary.Subtle" parent="ButtonPrimary">
+        <item name="backgroundTint">@color/cv_accent_subtle</item>
+        <item name="android:textColor">@color/cv_button_primary_text</item>
+    </style>
+    
+    <style name="ButtonSecondary.Subtle" parent="ButtonSecondary">
+        <item name="strokeColor">@color/cv_surface_subtle_outline</item>
+        <item name="android:textColor">@color/cv_text_subtle_primary</item>
+    </style>
+
+    <!-- ========================================
+         SUBTLE CARD STYLES
+         ======================================== -->
+    
+    <style name="CardVaultElevated.Subtle" parent="CardVaultElevated">
+        <item name="cardBackgroundColor">@color/cv_surface_subtle</item>
+        <item name="strokeColor">@color/cv_surface_subtle_outline</item>
+    </style>
+    
+    <style name="CardVault.Subtle" parent="CardVault">
+        <item name="cardBackgroundColor">@color/cv_surface_subtle_elevated</item>
+        <item name="strokeColor">@color/cv_surface_subtle_outline</item>
+    </style>
+
+</resources>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  network_security_config.xml
+  - No cleartext traffic allowed (HTTPS only)
+  - Certificate pinning for the signaling server
+  - Restrict to trusted CAs only
+-->
+<network-security-config>
+
+    <!-- No cleartext HTTP allowed anywhere -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!--
+    Pin the signaling server certificate.
+    Replace SHA256 with your actual server cert pin.
+    Generate: openssl x509 -in cert.pem -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64
+    -->
+    <!--
+    <domain-config>
+        <domain includeSubdomains="true">your-signaling-server.com</domain>
+        <pin-set expiration="2026-01-01">
+            <pin digest="SHA-256">REPLACE_WITH_YOUR_SERVER_CERT_PIN=</pin>
+        </pin-set>
+    </domain-config>
+    -->
+
+</network-security-config>

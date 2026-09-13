@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ========================================
+         SPACING SYSTEM (8dp base scale)
+         ======================================== -->
+    <dimen name="cv_space_0">0dp</dimen>
+    <dimen name="cv_space_xs">4dp</dimen>
+    <dimen name="cv_space_sm">8dp</dimen>
+    <dimen name="cv_space_md">12dp</dimen>
+    <dimen name="cv_space_lg">16dp</dimen>
+    <dimen name="cv_space_xl">20dp</dimen>
+    <dimen name="cv_space_2xl">24dp</dimen>
+    <dimen name="cv_space_3xl">32dp</dimen>
+    <dimen name="cv_space_4xl">40dp</dimen>
+    <dimen name="cv_space_5xl">48dp</dimen>
+    
+    <!-- ========================================
+         BORDER RADIUS (Corner Radius)
+         ======================================== -->
+    <dimen name="cv_radius_none">0dp</dimen>
+    <dimen name="cv_radius_sm">12dp</dimen>
+    <dimen name="cv_radius_md">18dp</dimen>
+    <dimen name="cv_radius_lg">24dp</dimen>
+    <dimen name="cv_radius_xl">32dp</dimen>
+    <dimen name="cv_radius_full">999dp</dimen>
+    
+    <!-- ========================================
+         ELEVATION / SHADOW TOKENS
+         ======================================== -->
+    <dimen name="cv_elevation_none">0dp</dimen>
+    <dimen name="cv_elevation_sm">2dp</dimen>
+    <dimen name="cv_elevation_md">4dp</dimen>
+    <dimen name="cv_elevation_lg">8dp</dimen>
+    <dimen name="cv_elevation_xl">12dp</dimen>
+    <dimen name="cv_elevation_2xl">16dp</dimen>
+    
+    <!-- ========================================
+         STROKE / BORDER WIDTH
+         ======================================== -->
+    <dimen name="cv_stroke_none">0dp</dimen>
+    <dimen name="cv_stroke_thin">1dp</dimen>
+    <dimen name="cv_stroke_sm">2dp</dimen>
+    <dimen name="cv_stroke_md">3dp</dimen>
+    
+    <!-- ========================================
+         TYPOGRAPHY - TEXT SIZES
+         ======================================== -->
+    
+    <!-- Display Sizes (Headings) -->
+    <dimen name="cv_text_display_lg">32sp</dimen>
+    <dimen name="cv_text_display_md">28sp</dimen>
+    <dimen name="cv_text_display_sm">24sp</dimen>
+    
+    <!-- Headline Sizes -->
+    <dimen name="cv_text_headline_lg">28sp</dimen>
+    <dimen name="cv_text_headline_md">24sp</dimen>
+    <dimen name="cv_text_headline_sm">20sp</dimen>
+    
+    <!-- Title Sizes -->
+    <dimen name="cv_text_title_lg">22sp</dimen>
+    <dimen name="cv_text_title_md">18sp</dimen>
+    <dimen name="cv_text_title_sm">16sp</dimen>
+    
+    <!-- Body Sizes -->
+    <dimen name="cv_text_body_lg">18sp</dimen>
+    <dimen name="cv_text_body_md">16sp</dimen>
+    <dimen name="cv_text_body_sm">14sp</dimen>
+    
+    <!-- Label Sizes -->
+    <dimen name="cv_text_label_lg">14sp</dimen>
+    <dimen name="cv_text_label_md">12sp</dimen>
+    <dimen name="cv_text_label_sm">11sp</dimen>
+    
+    <!-- Caption -->
+    <dimen name="cv_text_caption">12sp</dimen>
+    
+    <!-- ========================================
+         TYPOGRAPHY - LINE HEIGHT
+         ======================================== -->
+    <dimen name="cv_line_height_tight" >16sp</dimen>
+    <dimen name="cv_line_height_normal" >20sp</dimen>
+    <dimen name="cv_line_height_relaxed" >24sp</dimen>
+    
+    <!-- ========================================
+         COMPONENT SIZES
+         ======================================== -->
+    
+    <!-- FAB / Button Sizes -->
+    <dimen name="cv_fab_sm">48dp</dimen>
+    <dimen name="cv_fab_md">64dp</dimen>
+    <dimen name="cv_fab_lg">80dp</dimen>
+    
+    <!-- Button Heights -->
+    <dimen name="cv_button_height_sm">40dp</dimen>
+    <dimen name="cv_button_height_md">48dp</dimen>
+    <dimen name="cv_button_height_lg">56dp</dimen>
+    <dimen name="cv_button_height_xl">64dp</dimen>
+    
+    <!-- Input Height -->
+    <dimen name="cv_input_height">48dp</dimen>
+    
+    <!-- Icon Sizes -->
+    <dimen name="cv_icon_xs">16dp</dimen>
+    <dimen name="cv_icon_sm">20dp</dimen>
+    <dimen name="cv_icon_md">24dp</dimen>
+    <dimen name="cv_icon_lg">32dp</dimen>
+    <dimen name="cv_icon_xl">48dp</dimen>
+    
+    <!-- ========================================
+         SCREEN PADDING
+         ======================================== -->
+    <dimen name="cv_screen_padding_horizontal">16dp</dimen>
+    <dimen name="cv_screen_padding_vertical">24dp</dimen>
+    
+    <!-- ========================================
+         CARD / PANEL SIZES
+         ======================================== -->
+    <dimen name="cv_card_max_width">500dp</dimen>
+    <dimen name="cv_panel_padding">24dp</dimen>
+</resources>

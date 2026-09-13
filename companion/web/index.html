@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CalcVault Companion</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="bg-orb orb-a"></div>
+  <div class="bg-orb orb-b"></div>
+  <main class="layout">
+    <header class="hero">
+      <h1>CalcVault Companion</h1>
+      <p>Local-first secure bridge for backup, restore, and file transfer.</p>
+      <div class="status-strip">
+        <span id="connectionBadge" class="badge offline">Disconnected</span>
+        <span id="sessionBadge" class="badge idle">Session Inactive</span>
+      </div>
+    </header>
+
+    <section class="panel" id="dashboardPanel">
+      <h2>Dashboard</h2>
+      <div class="grid two" id="dashboardGrid"></div>
+    </section>
+
+    <section class="panel" id="connectionPanel">
+      <h2>Connection Panel</h2>
+      <div class="grid two">
+        <div class="block">
+          <h3>USB (Primary)</h3>
+          <div class="row">
+            <button id="refreshUsbBtn" class="btn secondary">Refresh Devices</button>
+            <button id="connectUsbBtn" class="btn">Connect USB</button>
+          </div>
+          <select id="usbDeviceSelect"></select>
+        </div>
+        <div class="block">
+          <h3>Local Network (Optional)</h3>
+          <input id="networkUrlInput" type="text" placeholder="ws://phone-ip:37111/bridge" />
+          <div class="row">
+            <button id="connectNetworkBtn" class="btn">Connect Network</button>
+            <button id="disconnectBtn" class="btn danger">Disconnect</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="pairing-zone">
+        <div class="row">
+          <button id="startPairingBtn" class="btn">Start Pairing</button>
+          <span id="pairingHint" class="hint">Generate QR/code and approve on phone.</span>
+        </div>
+        <div class="grid two pairing-grid">
+          <div class="pair-card">
+            <label>Pairing Code</label>
+            <div id="pairingCode" class="pair-code">-</div>
+            <div id="pairingExpiry" class="muted"></div>
+          </div>
+          <div class="pair-card">
+            <label>Pairing QR</label>
+            <div id="pairingQr" class="pair-qr">No active pairing</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="backupPanel">
+      <h2>Backup Manager</h2>
+      <div class="row">
+        <button id="createBackupBtn" class="btn">Create Backup</button>
+        <button id="refreshBackupsBtn" class="btn secondary">Refresh Backups</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Backup ID</th>
+            <th>Device</th>
+            <th>Created</th>
+            <th>Size</th>
+            <th>Integrity</th>
+            <th>Restore</th>
+          </tr>
+        </thead>
+        <tbody id="backupTableBody"></tbody>
+      </table>
+    </section>
+
+    <section class="panel" id="filesPanel">
+      <h2>File Manager</h2>
+      <div class="row wrap">
+        <input id="uploadInput" type="file" multiple />
+        <button id="uploadBtn" class="btn">Upload To Phone</button>
+        <button id="refreshFilesBtn" class="btn secondary">Refresh Metadata</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>File ID</th>
+            <th>Name</th>
+            <th>Size</th>
+            <th>Modified</th>
+            <th>Download</th>
+          </tr>
+        </thead>
+        <tbody id="filesTableBody"></tbody>
+      </table>
+    </section>
+
+    <section class="panel" id="logPanel">
+      <h2>Session Log</h2>
+      <pre id="sessionLog"></pre>
+    </section>
+  </main>
+
+  <script>
+    window.__CV_CONFIG__ = {
+      apiToken: "__CV_API_TOKEN__",
+      sessionTtlMs: Number("__CV_SESSION_TTL_MS__") || 900000,
+    };
+  </script>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

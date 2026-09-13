@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_vault_screen">
+
+    <!-- Ambient Animation Layer -->
+    <com.calcvault.ui.ambient.AmbientAnimationView
+        android:id="@+id/ambientView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="@dimen/cv_space_3xl">
+
+        <!-- Passphrase Panel -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/passphrasePanel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            app:cardBackgroundColor="@color/cv_surface_overlay_strong"
+            app:cardCornerRadius="@dimen/cv_radius_xl"
+            app:cardElevation="@dimen/cv_elevation_md"
+            app:strokeColor="@color/cv_surface_outline"
+            app:strokeWidth="@dimen/cv_stroke_thin"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintVertical_bias="0.5">
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="@dimen/cv_space_3xl">
+
+                <!-- Lock Icon -->
+                <ImageView
+                    android:id="@+id/ivLock"
+                    android:layout_width="@dimen/cv_icon_lg"
+                    android:layout_height="@dimen/cv_icon_lg"
+                    android:src="@drawable/ic_lock"
+                    app:tint="@color/cv_text_primary_dark"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintBottom_toTopOf="@id/tvInstruction"
+                    app:layout_constraintVertical_chainStyle="packed"
+                    android:contentDescription="@string/accessibility_lock_icon" />
+
+                <!-- Instruction Text -->
+                <TextView
+                    android:id="@+id/tvInstruction"
+                    style="@style/TextHeadlineLarge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/passphrase_instruction"
+                    android:textAlignment="center"
+                    app:layout_constraintTop_toBottomOf="@id/ivLock"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    android:layout_marginTop="@dimen/cv_space_xl"
+                    android:layout_marginBottom="@dimen/cv_space_3xl" />
+
+                <!-- Passphrase Input -->
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilPassphrase"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    app:hintEnabled="false"
+                    app:endIconMode="password_toggle"
+                    app:endIconTint="@color/cv_text_secondary_dark"
+                    app:layout_constraintTop_toBottomOf="@id/tvInstruction"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etPassphrase"
+                        style="@style/InputFieldVault"
+                        android:layout_width="match_parent"
+                        android:layout_height="@dimen/cv_button_height_lg"
+                        android:hint="@string/passphrase_hint"
+                        android:inputType="textPassword"
+                        android:imeOptions="actionDone"
+                        android:autofillHints="password" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- Status Message -->
+                <TextView
+                    android:id="@+id/tvStatus"
+                    style="@style/TextBodySmall"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:text=""
+                    android:textColor="@color/cv_danger"
+                    android:gravity="center"
+                    android:layout_marginTop="@dimen/cv_space_lg"
+                    app:layout_constraintTop_toBottomOf="@id/tilPassphrase"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent" />
+
+                <!-- Unlock Button -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnUnlock"
+                    style="@style/ButtonPrimary"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/cv_button_height_lg"
+                    android:text="@string/button_unlock"
+                    android:layout_marginTop="@dimen/cv_space_3xl"
+                    app:layout_constraintTop_toBottomOf="@id/tvStatus"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent" />
+
+                <!-- Biometric Button -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnBiometric"
+                    style="@style/ButtonText"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/cv_button_height_lg"
+                    android:text="@string/button_biometric"
+                    android:layout_marginTop="@dimen/cv_space_sm"
+                    app:layout_constraintTop_toBottomOf="@id/btnUnlock"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:icon="@android:drawable/ic_dialog_info"
+                    app:iconGravity="textStart"
+                    app:iconTint="@color/cv_text_primary_dark" />
+
+                <!-- Cancel Button -->
+                <TextView
+                    android:id="@+id/btnCancel"
+                    style="@style/TextBodySmall"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/button_back_calculator"
+                    android:textColor="@color/cv_text_secondary_dark"
+                    android:padding="@dimen/cv_space_lg"
+                    android:gravity="center"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?attr/selectableItemBackground"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    android:layout_marginBottom="@dimen/cv_space_xl" />
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,0 +1,6 @@
+{
+  "name": "Our Sanctuary",
+  "description": "An intimate messaging space and sensory memory journal with interactive romantic live backdrops, dynamic local photo pinning, hand-squeeze interactions, and a development-workspace compiler.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

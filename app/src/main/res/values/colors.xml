@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ========================================
+         DARK THEME (Default/Secure) - Core Palette
+         ======================================== -->
+    
+    <!-- Backgrounds -->
+    <color name="cv_background">#0A0A0F</color>
+    <color name="cv_bg_dark">#0A0A0F</color>
+    <color name="cv_surface_dark">#1C1C24</color>
+    <color name="cv_surface_dark_elevated">#25252E</color>
+    
+    <!-- Text - Dark Theme -->
+    <color name="cv_text_primary_dark">#FFFFFF</color>
+    <color name="cv_text_secondary_dark">#888888</color>
+    <color name="cv_text_tertiary_dark">#7C8594</color>
+    <color name="cv_text_quaternary_dark">#5A6270</color>
+    
+    <!-- Accents & Primary Colors -->
+    <color name="cv_accent">#4C8EFF</color>
+    <color name="cv_accent_soft">#3A73E0</color>
+    <color name="cv_accent_dark">#2E5AB8</color>
+    
+    <!-- Surface Overlays & Layers -->
+    <color name="cv_surface_overlay">#D4141A24</color>
+    <color name="cv_surface_overlay_soft">#A6121720</color>
+    <color name="cv_surface_overlay_strong">#E0191E29</color>
+    <color name="cv_surface_overlay_extra_strong">#F0202632</color>
+    
+    <!-- Outlines & Borders -->
+    <color name="cv_surface_outline">#333A495D</color>
+    <color name="cv_surface_outline_strong">#555F7592</color>
+    <color name="cv_surface_outline_soft">#221F2E4A</color>
+    
+    <!-- Input & Chip Surfaces -->
+    <color name="cv_input_surface">#CC10161F</color>
+    <color name="cv_input_surface_focused">#E6151B26</color>
+    <color name="cv_chip_surface">#99222836</color>
+    <color name="cv_chip_active">#1F6CFF</color>
+    
+    <!-- Bubbles - Dark -->
+    <color name="cv_sent_bubble_dark">#2A3A5C</color>
+    <color name="cv_recv_bubble_dark">#1E1E28</color>
+    
+    <!-- Semantic Colors -->
+    <color name="cv_success">#44CC66</color>
+    <color name="cv_success_soft">#2BA850</color>
+    <color name="cv_danger">#FF4444</color>
+    <color name="cv_danger_soft">#E63344</color>
+    <color name="cv_warning">#FFAA00</color>
+    <color name="cv_warning_soft">#E59900</color>
+    <color name="cv_online">#44FF88</color>
+    <color name="cv_offline">#888888</color>
+    
+    <!-- Status Colors -->
+    <color name="cv_call_overlay">#6610141D</color>
+    <color name="cv_recording_indicator">#FF4444</color>
+    
+    <!-- Button Colors -->
+    <color name="cv_button_neutral">#252C38</color>
+    <color name="cv_button_primary_text">#F8FBFF</color>
+    <color name="cv_button_secondary_text">#7C8594</color>
+    
+    <!-- ========================================
+         WARM THEME (Emotional) - Soft Tones
+         ======================================== -->
+    
+    <!-- Backgrounds - Warm -->
+    <color name="cv_bg_warm">#1A0A10</color>
+    <color name="cv_surface_warm">#2A1A22</color>
+    <color name="cv_surface_warm_elevated">#342228</color>
+    
+    <!-- Accent - Warm -->
+    <color name="cv_accent_romantic">#FF4466</color>
+    <color name="cv_accent_romantic_soft">#E63355</color>
+    <color name="cv_accent_romantic_dark">#CC2845</color>
+    
+    <!-- Warm Tints -->
+    <color name="cv_warm_tint">#C24A64</color>
+    <color name="cv_warm_tint_soft">#40C24A64</color>
+    <color name="cv_warm_tint_light">#60D45A72</color>
+    
+    <!-- Surface Warm -->
+    <color name="cv_surface_warm_overlay">#D4181428</color>
+    <color name="cv_surface_warm_overlay_soft">#A6121720</color>
+    <color name="cv_surface_warm_overlay_strong">#E0212932</color>
+    
+    <!-- Text - Warm -->
+    <color name="cv_text_warm_primary">#F8F0F3</color>
+    <color name="cv_text_warm_secondary">#B8A0A8</color>
+    <color name="cv_text_warm_tertiary">#8C7280</color>
+    
+    <!-- ========================================
+         LIVE-SUBTLE THEME (Light Dynamic)
+         ======================================== -->
+    
+    <!-- Backgrounds - Subtle -->
+    <color name="cv_bg_subtle">#F5F5F8</color>
+    <color name="cv_surface_subtle">#FFFFFF</color>
+    <color name="cv_surface_subtle_elevated">#F9F9FB</color>
+    
+    <!-- Accent - Subtle -->
+    <color name="cv_accent_subtle">#3A73E0</color>
+    <color name="cv_accent_subtle_soft">#5085E8</color>
+    <color name="cv_accent_subtle_dark">#2E5AB8</color>
+    
+    <!-- Surface Subtle -->
+    <color name="cv_surface_subtle_overlay">#10121820</color>
+    <color name="cv_surface_subtle_overlay_soft">#08101018</color>
+    <color name="cv_surface_subtle_overlay_strong">#12161C28</color>
+    
+    <!-- Text - Subtle -->
+    <color name="cv_text_subtle_primary">#202020</color>
+    <color name="cv_text_subtle_secondary">#666666</color>
+    <color name="cv_text_subtle_tertiary">#999999</color>
+    
+    <!-- Outlines - Subtle -->
+    <color name="cv_surface_subtle_outline">#E8E8EB</color>
+    <color name="cv_surface_subtle_outline_strong">#D8D8DC</color>
+    
+    <!-- Bubbles - Subtle -->
+    <color name="cv_sent_bubble_subtle">#3A6ED8</color>
+    <color name="cv_recv_bubble_subtle">#EEEEEE</color>
+    
+    <!-- ========================================
+         UNIVERSAL SEMANTIC TOKENS
+         ======================================== -->
+    
+    <!-- Elevation & Shadow -->
+    <color name="cv_shadow_sm">#0D000000</color>
+    <color name="cv_shadow_md">#14000000</color>
+    <color name="cv_shadow_lg">#20000000</color>
+    <color name="cv_shadow_xl">#2A000000</color>
+    
+    <!-- Focus State -->
+    <color name="cv_focus_ring">#66FFFFFF</color>
+    <color name="cv_focus_ring_dark">#1F6CFF</color>
+    
+    <!-- Disabled State -->
+    <color name="cv_disabled">#404040</color>
+    <color name="cv_disabled_light">#D0D0D0</color>
+    
+    <!-- ========================================
+         CALCULATOR COLORS (Unchanged)
+         ======================================== -->
+    <color name="calc_bg">#1C1C1E</color>
+    <color name="calc_btn_number">#2C2C2E</color>
+    <color name="calc_btn_function">#636366</color>
+    <color name="calc_btn_operator">#FF9F0A</color>
+    <color name="calc_text">#FFFFFF</color>
+    
+    <!-- ========================================
+         UTILITY COLORS
+         ======================================== -->
+    <color name="transparent">#00000000</color>
+    <color name="ic_launcher_background">#1C1C1E</color>
+    <color name="scrim_dark">#B3000000</color>
+    <color name="scrim_light">#33000000</color>
+
+    <!-- ========================================
+         SANCTUARY THEME COLORS (Romantic Backdrops)
+         Extracted from Our Sanctuary Project
+         ======================================== -->
+
+    <!-- 1. TWILIGHT STARGAZING - Purple Dusk -->
+    <color name="cv_sanctuary_stargazing_bg">#0F0A1A</color>
+    <color name="cv_sanctuary_stargazing_accent">#FF758C</color>
+    <color name="cv_sanctuary_stargazing_accent_dark">#E0687A</color>
+    <color name="cv_sanctuary_stargazing_text_primary">#F5E8FF</color>
+    <color name="cv_sanctuary_stargazing_text_secondary">#B8A0C8</color>
+    <color name="cv_sanctuary_stargazing_send_btn">#A13D3F</color>
+
+    <!-- 2. COZY RAINY CAFE - Warm Brown -->
+    <color name="cv_sanctuary_rainycafe_bg">#1D1B17</color>
+    <color name="cv_sanctuary_rainycafe_accent">#E29578</color>
+    <color name="cv_sanctuary_rainycafe_accent_dark">#DD6E42</color>
+    <color name="cv_sanctuary_rainycafe_text_primary">#F5EFE8</color>
+    <color name="cv_sanctuary_rainycafe_text_secondary">#C9B8A8</color>
+    <color name="cv_sanctuary_rainycafe_send_btn">#845400</color>
+
+    <!-- 3. SUNRISE EMBRACE - Coral/Gold -->
+    <color name="cv_sanctuary_sunrise_bg">#1A1514</color>
+    <color name="cv_sanctuary_sunrise_accent">#FF7976</color>
+    <color name="cv_sanctuary_sunrise_accent_dark">#F47C7C</color>
+    <color name="cv_sanctuary_sunrise_text_primary">#FFEEDD</color>
+    <color name="cv_sanctuary_sunrise_text_secondary">#D4B8A0</color>
+    <color name="cv_sanctuary_sunrise_send_btn">#A13D3F</color>
+
+    <!-- 4. AUTUMN PARK DUSK - Golden Amber -->
+    <color name="cv_sanctuary_autumnpark_bg">#1D1517</color>
+    <color name="cv_sanctuary_autumnpark_accent">#E07A5F</color>
+    <color name="cv_sanctuary_autumnpark_accent_dark">#F2CC8F</color>
+    <color name="cv_sanctuary_autumnpark_text_primary">#F5E8DC</color>
+    <color name="cv_sanctuary_autumnpark_text_secondary">#C9A8A0</color>
+    <color name="cv_sanctuary_autumnpark_send_btn">#B0583B</color>
+
+    <!-- 5. SUNSET BEACH - Warm Orange -->
+    <color name="cv_sanctuary_sunsetbeach_bg">#1D0E12</color>
+    <color name="cv_sanctuary_sunsetbeach_accent">#FFAC81</color>
+    <color name="cv_sanctuary_sunsetbeach_accent_dark">#FF928B</color>
+    <color name="cv_sanctuary_sunsetbeach_text_primary">#FFEAE0</color>
+    <color name="cv_sanctuary_sunsetbeach_text_secondary">#D9B8A8</color>
+    <color name="cv_sanctuary_sunsetbeach_send_btn">#B85A3C</color>
+
+    <!-- 6. PEACEFUL SNOW - Cool Blue -->
+    <color name="cv_sanctuary_peacefulsnow_bg">#101623</color>
+    <color name="cv_sanctuary_peacefulsnow_accent">#A2C2E8</color>
+    <color name="cv_sanctuary_peacefulsnow_accent_dark">#6A99D0</color>
+    <color name="cv_sanctuary_peacefulsnow_text_primary">#E8F0FF</color>
+    <color name="cv_sanctuary_peacefulsnow_text_secondary">#A8C0D8</color>
+    <color name="cv_sanctuary_peacefulsnow_send_btn">#2B4C7E</color>
+
+    <!-- 7. COUCH FIREPLACE - Red-Orange -->
+    <color name="cv_sanctuary_couchfireplace_bg">#201517</color>
+    <color name="cv_sanctuary_couchfireplace_accent">#F39C12</color>
+    <color name="cv_sanctuary_couchfireplace_accent_dark">#D35400</color>
+    <color name="cv_sanctuary_couchfireplace_text_primary">#FFF0E0</color>
+    <color name="cv_sanctuary_couchfireplace_text_secondary">#D4B8A0</color>
+    <color name="cv_sanctuary_couchfireplace_send_btn">#A34A2E</color>
+
+</resources>

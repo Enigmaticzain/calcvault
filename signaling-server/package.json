@@ -1,0 +1,17 @@
+{
+  "name": "calcvault-signaling",
+  "version": "1.0.0",
+  "description": "Minimal WebRTC signaling server for CalcVault",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "validate:wrappers": "node ../validate-signaling-wrappers.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

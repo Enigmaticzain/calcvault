@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ========================================
+         DESIGN SYSTEM DOCUMENTATION
+         ========================================
+         
+         CalcVault Theme System - Centralized Design Tokens
+         
+         THREE THEME VARIANTS:
+         
+         1. DARK THEME (Default/Secure)
+            - Deep background (#0A0A0F)
+            - High contrast for reading
+            - Minimal glare
+            - Primary accent: #4C8EFF (cool blue)
+            - Use: Default for all vault screens
+            
+         2. WARM THEME (Emotional)
+            - Soft background (#1A0A10)
+            - Warm pink accent (#FF4466)
+            - Romantic/comfortable feel
+            - Use: When emotional content detected
+            - Triggers: "i love you", "good night", etc.
+            
+         3. LIVE-SUBTLE THEME (Light Dynamic)
+            - Light background (#F5F5F8)
+            - Subtle accent (#3A73E0)
+            - Professional / neutral feel
+            - Use: Alternative for accessibility
+            - No heavy animations, minimal motion
+         
+         ========================================
+         SPACING SYSTEM (8dp Base Scale)
+         ========================================
+         
+         xs   = 4dp    (smallest gap)
+         sm   = 8dp    (base unit)
+         md   = 12dp   (elements)
+         lg   = 16dp   (padding)
+         xl   = 20dp   (spacing)
+         2xl  = 24dp   (larger spacing)
+         3xl  = 32dp   (sections)
+         4xl  = 40dp   (major sections)
+         5xl  = 48dp   (screen edges)
+         
+         ========================================
+         CORNER RADIUS (Consistency)
+         ========================================
+         
+         sm   = 12dp   (small chips, inputs)
+         md   = 18dp   (buttons)
+         lg   = 24dp   (cards)
+         xl   = 32dp   (panels)
+         full = 999dp  (circles, pills)
+         
+         ========================================
+         TYPOGRAPHY SCALE
+         ========================================
+         
+         Display LG = 32sp (main titles)
+         Display MD = 28sp (large titles)
+         Display SM = 24sp (section headers)
+         
+         Headline LG = 28sp (headings)
+         Headline MD = 24sp (subheadings)
+         Headline SM = 20sp (labels)
+         
+         Title LG   = 22sp
+         Title MD   = 18sp
+         Title SM   = 16sp
+         
+         Body LG    = 18sp (calls-to-action)
+         Body MD    = 16sp (primary text)
+         Body SM    = 14sp (secondary text)
+         
+         Label LG   = 14sp
+         Label MD   = 12sp (section labels)
+         Label SM   = 11sp
+         
+         Caption    = 12sp (helper text)
+         
+         ========================================
+         ELEVATION / SHADOW
+         ========================================
+         
+         none = 0dp
+         sm   = 2dp
+         md   = 4dp   (cards, inputs)
+         lg   = 8dp   (FABs, floating)
+         xl   = 12dp  (modal panels)
+         2xl  = 16dp  (highest emphasis)
+         
+         ========================================
+         COLOR TOKENS
+         ========================================
+         
+         PRIMARY SEMANTIC COLORS:
+         - cv_accent          = Action color (accent)
+         - cv_danger          = Destructive (red)
+         - cv_success         = Positive (green)
+         - cv_warning         = Cautionary (orange)
+         
+         TEXT HIERARCHY:
+         - cv_text_primary    = Main text
+         - cv_text_secondary  = Supporting text
+         - cv_text_tertiary   = Subtle text
+         - cv_text_quaternary = Disabled text
+         
+         SURFACE LAYERS:
+         - cv_surface_overlay           = Light overlay
+         - cv_surface_overlay_soft      = Very light overlay
+         - cv_surface_overlay_strong    = Dark overlay
+         - cv_surface_outline           = Dividers, borders
+         - cv_surface_outline_strong    = Strong hints
+         
+         INPUT:
+         - cv_input_surface             = Input background
+         - cv_input_surface_focused     = Focused input BG
+         
+         ========================================
+         COMPONENT STANDARDS
+         ========================================
+         
+         BUTTONS:
+         - Height: 48dp-64dp
+         - Corner Radius: 18dp
+         - Elevation: 4dp (active)
+         - Padding: 12dp horizontal
+         
+         INPUT FIELDS:
+         - Height: 60dp minimum
+         - Padding: 16dp horizontal
+         - Radius: 18dp
+         - Background: cv_input_surface
+         
+         FABs:
+         - Small: 48dp
+         - Medium: 64dp
+         - Large: 80dp
+         - Elevation: 8dp
+         
+         CARDS:
+         - Radius: 24dp (lg) or 32dp (xl)
+         - Stroke: 1dp (thin)
+         - Elevation: 0dp-4dp
+         
+         ========================================
+         USAGE GUIDELINES
+         ========================================
+         
+         1. NEVER use hardcoded colors
+            - Always reference @color/* tokens
+            
+         2. NEVER inline text properties
+            - Always use text style references
+            - @style/TextBodyMedium, etc.
+            
+         3. NEVER hardcode dimensions
+            - Use @dimen/* tokens for all sizes
+            
+         4. MAINTAIN consistency
+            - Use the same spacing across screens
+            - Button heights must be standardized
+            - Icon sizes from cv_icon_* tokens
+            
+         5. THEME SWITCHING
+            - All colors automatically update
+            - Devices with "follow system" setting
+            - Light/Dark/Warm selectable in settings
+            
+         6. PERFORMANCE
+            - Minimal elevation (reduces overdraw)
+            - No constant animations
+            - Ripple effects only on interaction
+            
+         7. ACCESSIBILITY
+            - Sufficient color contrast (WCAG AA)
+            - Text sizes minimum 14sp
+            - Touch targets minimum 48dp
+         
+         ========================================
+         
+         Version: 1.0 (April 15, 2026)
+         Vault UI System - Final Polish
+         
+         ========================================
+    -->
+
+    <!-- Placeholder - actual token definitions are in colors.xml, dimens.xml, styles.xml -->
+</resources>

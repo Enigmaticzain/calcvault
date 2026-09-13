@@ -1,0 +1,332 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_vault_screen">
+
+    <!-- Video Preview / Background (Conditional) -->
+    <androidx.camera.view.PreviewView
+        android:id="@+id/viewFinder"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
+    <!-- Video Overlay (Conditional) -->
+    <View
+        android:id="@+id/videoOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/cv_call_overlay"
+        android:visibility="gone" />
+
+    <!-- Soft Flash Frame (Low Light) -->
+    <View
+        android:id="@+id/softFlashFrame"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/white"
+        android:alpha="0.0"
+        android:visibility="gone" />
+
+    <!-- ========================================
+         PARTNER INFO SECTION (Top)
+         ======================================== -->
+    <LinearLayout
+        android:id="@+id/partnerInfo"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="72dp"
+        android:gravity="center"
+        android:orientation="vertical"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <!-- Avatar Card -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/avatarCard"
+            android:layout_width="@dimen/cv_fab_lg"
+            android:layout_height="@dimen/cv_fab_lg"
+            app:cardBackgroundColor="@color/cv_surface_overlay_strong"
+            app:cardCornerRadius="@dimen/cv_radius_full"
+            app:cardElevation="@dimen/cv_elevation_lg"
+            app:strokeColor="@color/cv_surface_outline_strong"
+            app:strokeWidth="@dimen/cv_stroke_thin">
+
+            <TextView
+                android:id="@+id/ivAvatar"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="💑"
+                android:textSize="@dimen/cv_text_display_lg" />
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Partner Name -->
+        <TextView
+            android:id="@+id/tvPartnerName"
+            style="@style/TextDisplayMedium"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/cv_space_xl"
+            android:text="@string/call_partner_name"
+            android:textColor="@color/cv_text_primary_dark" />
+
+        <!-- Call Status -->
+        <TextView
+            android:id="@+id/tvCallStatus"
+            style="@style/TextBodyMedium"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/cv_space_sm"
+            android:text="@string/call_status_calling"
+            android:textColor="@color/cv_text_secondary_dark" />
+
+        <!-- Call Timer -->
+        <TextView
+            android:id="@+id/tvTimer"
+            style="@style/TextTitleMedium"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/cv_space_md"
+            android:background="@drawable/bg_vault_chip"
+            android:paddingHorizontal="@dimen/cv_space_md"
+            android:paddingVertical="@dimen/cv_space_xs"
+            android:fontFamily="monospace"
+            android:text="00:00"
+            android:textColor="@color/cv_success"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- ========================================
+         WAVEFORM / AUDIO VISUALIZER
+         ======================================== -->
+    <com.calcvault.ui.call.WaveformView
+        android:id="@+id/waveformView"
+        android:layout_width="0dp"
+        android:layout_height="100dp"
+        android:layout_marginHorizontal="40dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@+id/rowControls"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/partnerInfo" />
+
+    <!-- ========================================
+         RECORDING DESTINATION SELECTOR
+         ======================================== -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/layoutRecording"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="@dimen/cv_space_2xl"
+        android:layout_marginBottom="@dimen/cv_space_lg"
+        android:visibility="gone"
+        app:cardBackgroundColor="@color/cv_surface_overlay_strong"
+        app:cardCornerRadius="@dimen/cv_radius_lg"
+        app:cardElevation="@dimen/cv_elevation_md"
+        app:strokeColor="@color/cv_surface_outline"
+        app:strokeWidth="@dimen/cv_stroke_thin"
+        app:layout_constraintBottom_toTopOf="@id/rowControls"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="@dimen/cv_space_xl">
+
+            <!-- Section Label -->
+            <TextView
+                style="@style/TextLabelMedium"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/recording_destination"
+                android:textColor="@color/cv_text_tertiary_dark" />
+
+            <!-- Destination Options -->
+            <RadioGroup
+                android:id="@+id/rgDest"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/cv_space_md">
+
+                <RadioButton
+                    android:id="@+id/rbMine"
+                    style="@style/TextBodyMedium"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/my_secure_usb"
+                    android:textColor="@color/cv_text_primary_dark"
+                    android:paddingVertical="@dimen/cv_space_sm" />
+
+                <RadioButton
+                    android:id="@+id/rbPartner"
+                    style="@style/TextBodyMedium"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/partner_secure_usb"
+                    android:textColor="@color/cv_text_primary_dark"
+                    android:paddingVertical="@dimen/cv_space_sm" />
+
+                <RadioButton
+                    android:id="@+id/rbBoth"
+                    style="@style/TextBodyMedium"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:checked="true"
+                    android:text="@string/both_drives_dual_sync"
+                    android:textColor="@color/cv_text_primary_dark"
+                    android:paddingVertical="@dimen/cv_space_sm" />
+            </RadioGroup>
+
+            <!-- Start Recording Button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnStartRecording"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/cv_button_height_lg"
+                android:layout_marginTop="@dimen/cv_space_lg"
+                android:text="@string/start_recording"
+                android:textColor="@color/cv_button_primary_text"
+                app:backgroundTint="@color/cv_danger"
+                app:cornerRadius="@dimen/cv_radius_md" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- ========================================
+         CALL CONTROLS ROW
+         ======================================== -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/rowControls"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingBottom="56dp"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <!-- Answer / Decline Mode -->
+        <LinearLayout
+            android:id="@+id/rowAnswerDecline"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingHorizontal="@dimen/cv_space_3xl"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <!-- Decline Button -->
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/btnDecline"
+                style="@style/FABVault"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="@dimen/cv_space_3xl"
+                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                app:backgroundTint="@color/cv_danger"
+                app:fabCustomSize="@dimen/cv_fab_lg"
+                app:maxImageSize="32dp"
+                app:tint="@color/cv_button_primary_text"
+                android:contentDescription="@string/button_decline" />
+
+            <!-- Answer Button -->
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/btnAnswer"
+                style="@style/FABVault"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/cv_space_3xl"
+                android:src="@android:drawable/ic_menu_call"
+                app:backgroundTint="@color/cv_success"
+                app:fabCustomSize="@dimen/cv_fab_lg"
+                app:maxImageSize="32dp"
+                app:tint="@color/cv_button_primary_text"
+                android:contentDescription="@string/button_answer" />
+        </LinearLayout>
+
+        <!-- Active Call Controls -->
+        <LinearLayout
+            android:id="@+id/layoutActiveControls"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingHorizontal="@dimen/cv_space_md"
+            android:visibility="gone"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <!-- Mute Button -->
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/btnMute"
+                style="@style/FABVault"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="@dimen/cv_space_md"
+                android:src="@android:drawable/ic_lock_silent_mode"
+                app:backgroundTint="@color/cv_button_neutral"
+                app:fabCustomSize="@dimen/cv_fab_md"
+                app:maxImageSize="24dp"
+                app:tint="@color/cv_button_primary_text"
+                android:contentDescription="@string/button_mute" />
+
+            <!-- Flash Button -->
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/btnFlash"
+                style="@style/FABVault"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="@dimen/cv_space_md"
+                android:src="@android:drawable/ic_menu_view"
+                app:backgroundTint="@color/cv_button_neutral"
+                app:fabCustomSize="@dimen/cv_fab_md"
+                app:maxImageSize="24dp"
+                app:tint="@color/cv_button_primary_text"
+                android:contentDescription="@string/button_flash"
+                android:visibility="gone" />
+
+            <!-- Speaker Button -->
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/btnSpeaker"
+                style="@style/FABVault"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="@dimen/cv_space_md"
+                android:src="@android:drawable/ic_lock_silent_mode_off"
+                app:backgroundTint="@color/cv_button_neutral"
+                app:fabCustomSize="@dimen/cv_fab_md"
+                app:maxImageSize="24dp"
+                app:tint="@color/cv_button_primary_text"
+                android:contentDescription="@string/button_speaker" />
+
+            <!-- Record Button -->
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/btnRecord"
+                style="@style/FABVault"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="@dimen/cv_space_md"
+                android:src="@android:drawable/ic_menu_save"
+                app:backgroundTint="@color/cv_button_neutral"
+                app:fabCustomSize="@dimen/cv_fab_md"
+                app:maxImageSize="24dp"
+                app:tint="@color/cv_button_primary_text"
+                android:contentDescription="@string/button_record" />
+
+            <!-- End Call Button -->
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/btnEnd"
+                style="@style/FABVault"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="@dimen/cv_space_md"
+                android:src="@android:drawable/ic_delete"
+                app:backgroundTint="@color/cv_danger"
+                app:fabCustomSize="@dimen/cv_fab_lg"
+                app:maxImageSize="28dp"
+                app:tint="@color/cv_button_primary_text"
+                android:contentDescription="@string/button_end" />
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

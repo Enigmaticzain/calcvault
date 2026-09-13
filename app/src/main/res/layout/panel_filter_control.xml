@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_rounded_dark"
+    android:padding="12dp"
+    android:elevation="8dp">
+
+    <!-- Toggle Button -->
+    <ImageButton
+        android:id="@+id/btnTogglePanel"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:src="@drawable/ic_filter"
+        android:contentDescription="Toggle Filters"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:scaleType="centerInside" />
+
+    <!-- Emoji Buttons Container -->
+    <LinearLayout
+        android:id="@+id/containerEmojis"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp"
+        android:visibility="gone" />
+
+    <!-- Filter Selector -->
+    <Spinner
+        android:id="@+id/spinnerFilters"
+        android:layout_width="200dp"
+        android:layout_height="40dp"
+        android:layout_marginTop="8dp"
+        android:visibility="gone" />
+
+    <!-- Intensity Slider -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="8dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvIntensity"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Intensity: 70%"
+            android:textSize="12sp"
+            android:textColor="@android:color/white" />
+
+        <SeekBar
+            android:id="@+id/sliderIntensity"
+            android:layout_width="200dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp" />
+    </LinearLayout>
+
+    <!-- Clear Effects Button -->
+    <Button
+        android:id="@+id/btnClearEffects"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:text="Clear All"
+        android:layout_marginTop="8dp"
+        android:visibility="gone"
+        android:textSize="12sp" />
+
+    <!-- Status Text -->
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textSize="11sp"
+        android:textColor="@android:color/white"
+        android:visibility="gone" />
+
+</LinearLayout>

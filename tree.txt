@@ -1,0 +1,146 @@
+app/src/main/java
+└── com
+    └── calcvault
+        ├── auth
+        │   ├── AttemptTracker.kt
+        │   ├── BiometricHelper.kt
+        │   ├── lockout
+        │   │   ├── HardenedAttemptTracker.kt
+        │   │   └── PersistentLockoutManager.kt
+        │   └── UnlockManager.kt
+        ├── {auth,ui
+        │   └── calculator,ui
+        │       └── unlock,storage,security,utils}
+        ├── CalcVaultApp.kt
+        ├── call
+        │   ├── CallEngine.kt
+        │   ├── CallForegroundService.kt
+        │   ├── recording
+        │   │   └── CallRecordingPipeline.kt
+        │   └── SocketCallEngine.kt
+        ├── {crypto
+        │   └── ratchet,storage
+        │       ├── container,storage
+        │       │   └── seal,sync
+        │       │       └── chain,auth
+        │       │           └── lockout,security
+        │       │               └── hooks}
+        │       └── seal,sync
+        │           └── chain,auth
+        │               └── lockout,security
+        │                   └── hooks}
+        ├── crypto
+        │   ├── E2EKeyManager.kt
+        │   └── ratchet
+        │       ├── DoubleRatchet.kt
+        │       ├── RatchetStateStore.kt
+        │       └── X3DH.kt
+        ├── {crypto,storage
+        │   └── container,storage
+        │       └── journal,sync,security
+        │           └── runtime,call
+        │               └── recording,decoy,memory}
+        ├── CVApplication.kt
+        ├── decoy
+        │   └── DecoyContainer.kt
+        ├── emotional
+        │   ├── EmotionalAnimationEngine.kt
+        │   └── ThemeEngine.kt
+        ├── memory
+        │   ├── MemoryGuard.kt
+        │   └── SecureBufferManager.kt
+        ├── messaging
+        │   └── AppendOnlyMessageDB.kt
+        ├── network
+        │   ├── bluetooth
+        │   │   └── BluetoothTransport.kt
+        │   ├── NetworkMessageEngine.kt
+        │   ├── webrtc
+        │   │   └── WebRTCManager.kt
+        │   └── wifi
+        │       └── WiFiDirectTransport.kt
+        ├── notifications
+        │   └── CVNotificationManager.kt
+        ├── security
+        │   ├── AutoLockManager.kt
+        │   ├── hooks
+        │   │   └── AntiHookMonitor.kt
+        │   ├── runtime
+        │   │   └── RuntimeSecurityMonitor.kt
+        │   └── SecurityLayer.kt
+        ├── service
+        │   └── CallForegroundService.kt
+        ├── storage
+        │   ├── container
+        │   │   └── EncryptedContainer.kt
+        │   ├── IntegrityLogger.kt
+        │   ├── journal
+        │   │   └── WriteJournal.kt
+        │   ├── MediaChunkManager.kt
+        │   ├── migration
+        │   │   ├── AtomicMigrationCoordinator.kt
+        │   │   └── DataMigrationEngine.kt
+        │   ├── provider
+        │   │   ├── LocalKeyStore.kt
+        │   │   ├── LocalStorageProvider.kt
+        │   │   ├── StorageManager.kt
+        │   │   ├── StorageModeWarningView.kt
+        │   │   ├── StorageProvider.kt
+        │   │   └── USBStorageProvider.kt
+        │   ├── {provider,migration}
+        │   ├── seal
+        │   │   └── ContainerSeal.kt
+        │   ├── UsbBroadcastReceiver.kt
+        │   └── USBStorageEngine.kt
+        ├── sync
+        │   ├── chain
+        │   │   ├── HashChainSyncEngine.kt
+        │   │   └── HashChainSyncValidator.kt
+        │   ├── DualUSBSyncEngine.kt
+        │   └── RealSyncEngine.kt
+        ├── {ui
+        │   ├── browser,ui
+        │   │   └── overlay,service,notifications}
+        │   ├── {call,media,settings,sync},network
+        │   │   └── {webrtc,wifi,bluetooth},storage}
+        │   └── {setup,main,chat,call,media,mood,settings},messaging,call,sync,security,network,emotional,utils}
+        ├── ui
+        │   ├── browser
+        │   │   └── PrivateBrowserActivity.kt
+        │   ├── calculator
+        │   │   ├── CalculatorActivity.kt
+        │   │   └── CalculatorViewModel.kt
+        │   ├── call
+        │   │   ├── CallActivity.kt
+        │   │   └── SimpleCallActivity.kt
+        │   ├── chat
+        │   │   ├── ChatActivity.kt
+        │   │   ├── LongPressMenuHelper.kt
+        │   │   └── MessageAdapter.kt
+        │   ├── main
+        │   │   ├── DecoyActivity.kt
+        │   │   ├── MainVaultActivity.kt
+        │   │   └── ShareReceiverActivity.kt
+        │   ├── media
+        │   │   └── MediaActivity.kt
+        │   ├── mood
+        │   │   └── MoodActivity.kt
+        │   ├── overlay
+        │   │   └── InactivityOverlayManager.kt
+        │   ├── settings
+        │   │   └── SettingsActivity.kt
+        │   ├── setup
+        │   │   └── FirstRunActivity.kt
+        │   ├── ShareReceiverActivity.kt
+        │   ├── sync
+        │   │   └── SyncActivity.kt
+        │   └── unlock
+        │       └── PassphraseActivity.kt
+        └── utils
+            ├── CryptoUtils.kt
+            ├── CVNotificationManager.kt
+            ├── PermissionHelper.kt
+            ├── PrefsManager.kt
+            └── SessionManager.kt
+
+70 directories, 74 files

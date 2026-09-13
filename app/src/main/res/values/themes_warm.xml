@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ========================================
+         WARM THEME (Emotional - Soft Tones)
+         Use when app detects emotional content
+         ======================================== -->
+
+    <style name="CalcVaultTheme.Warm" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Warm Backgrounds -->
+        <item name="android:windowBackground">@color/cv_bg_warm</item>
+        <item name="android:statusBarColor">@color/cv_bg_warm</item>
+        <item name="android:navigationBarColor">@color/cv_bg_warm</item>
+        
+        <!-- Warm Accent -->
+        <item name="colorPrimary">@color/cv_accent_romantic</item>
+        <item name="colorPrimaryDark">@color/cv_accent_romantic_dark</item>
+        <item name="colorAccent">@color/cv_accent_romantic</item>
+    </style>
+
+    <!-- ========================================
+         WARM TEXT STYLES
+         ======================================== -->
+    
+    <style name="TextDisplayLarge.Warm">
+        <item name="android:textColor">@color/cv_text_warm_primary</item>
+    </style>
+    
+    <style name="TextHeadlineLarge.Warm">
+        <item name="android:textColor">@color/cv_text_warm_primary</item>
+    </style>
+    
+    <style name="TextTitleLarge.Warm">
+        <item name="android:textColor">@color/cv_text_warm_primary</item>
+    </style>
+    
+    <style name="TextTitleMedium.Warm">
+        <item name="android:textColor">@color/cv_text_warm_primary</item>
+    </style>
+    
+    <style name="TextBodyLarge.Warm">
+        <item name="android:textColor">@color/cv_text_warm_primary</item>
+    </style>
+    
+    <style name="TextBodyMedium.Warm">
+        <item name="android:textColor">@color/cv_text_warm_primary</item>
+    </style>
+    
+    <style name="TextBodySmall.Warm">
+        <item name="android:textColor">@color/cv_text_warm_secondary</item>
+    </style>
+
+    <!-- ========================================
+         WARM BUTTON STYLES
+         ======================================== -->
+    
+    <style name="ButtonPrimary.Warm" parent="ButtonPrimary">
+        <item name="backgroundTint">@color/cv_accent_romantic</item>
+    </style>
+    
+    <style name="ButtonAccent.Warm" parent="ButtonAccent">
+        <item name="backgroundTint">@color/cv_accent_romantic</item>
+    </style>
+
+</resources>

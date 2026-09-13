@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:background="#1a1a1a">
+
+    <!-- Title -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🔧 Trigger Debug Console"
+        android:textColor="#00FF00"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:paddingBottom="8dp" />
+
+    <!-- Animation Preview -->
+    <com.calcvault.ui.ambient.AmbientAnimationView
+        android:id="@+id/animationView"
+        android:layout_width="match_parent"
+        android:layout_height="120dp"
+        android:background="#0a0a0a"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Test Trigger Input -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingBottom="8dp">
+
+        <EditText
+            android:id="@+id/triggerInput"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_weight="1"
+            android:hint="Test trigger message"
+            android:textColorHint="#666"
+            android:textColor="#fff"
+            android:background="#2a2a2a"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp" />
+
+        <Button
+            android:id="@+id/btnTestTrigger"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="Test"
+            android:textColor="#fff"
+            android:background="#1a5a1a"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:layout_marginStart="8dp" />
+    </LinearLayout>
+
+    <!-- JSON Input -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="JSON Triggers:"
+        android:textColor="#00FF00"
+        android:textSize="12sp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp" />
+
+    <EditText
+        android:id="@+id/jsonInput"
+        android:layout_width="match_parent"
+        android:layout_height="80dp"
+        android:hint="Paste JSON trigger config here"
+        android:textColorHint="#666"
+        android:textColor="#fff"
+        android:background="#2a2a2a"
+        android:padding="8dp"
+        android:textSize="10sp"
+        android:scrollbars="vertical"
+        android:maxLines="4" />
+
+    <!-- JSON Control Buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingTop="4dp"
+        android:paddingBottom="8dp">
+
+        <Button
+            android:id="@+id/btnLoadJSON"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:text="Load JSON"
+            android:textColor="#fff"
+            android:background="#1a4a5a"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/btnExampleJSON"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:text="Example"
+            android:textColor="#fff"
+            android:background="#4a4a1a"
+            android:textSize="11sp"
+            android:layout_marginStart="4dp" />
+    </LinearLayout>
+
+    <!-- Control Buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingBottom="8dp">
+
+        <Button
+            android:id="@+id/btnAddTestTrigger"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:text="Test Triggers"
+            android:textColor="#fff"
+            android:background="#1a5a1a"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/btnListTriggers"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:text="List All"
+            android:textColor="#fff"
+            android:background="#1a4a5a"
+            android:textSize="11sp"
+            android:layout_marginStart="4dp" />
+
+        <Button
+            android:id="@+id/btnStats"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:text="Stats"
+            android:textColor="#fff"
+            android:background="#4a4a1a"
+            android:textSize="11sp"
+            android:layout_marginStart="4dp" />
+    </LinearLayout>
+
+    <!-- More Control Buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingBottom="8dp">
+
+        <Button
+            android:id="@+id/btnClearTriggers"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:text="Clear"
+            android:textColor="#fff"
+            android:background="#5a1a1a"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/btnClearLog"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:text="Clear Log"
+            android:textColor="#fff"
+            android:background="#3a3a3a"
+            android:textSize="11sp"
+            android:layout_marginStart="4dp" />
+    </LinearLayout>
+
+    <!-- Notification Testing Buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingBottom="8dp">
+
+        <Button
+            android:id="@+id/btnTestNotification"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:text="Test Notification"
+            android:textColor="#fff"
+            android:background="#5a3a1a"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/btnSelectSound"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:text="Select Sound"
+            android:textColor="#fff"
+            android:background="#3a5a1a"
+            android:textSize="11sp"
+            android:layout_marginStart="4dp" />
+
+        <Button
+            android:id="@+id/btnSelectVibration"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:text="Vibration"
+            android:textColor="#fff"
+            android:background="#1a3a5a"
+            android:textSize="11sp"
+            android:layout_marginStart="4dp" />
+    </LinearLayout>
+
+    <!-- Debug Output -->
+    <TextView
+        android:id="@+id/debugOutput"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="#0a0a0a"
+        android:text="Debug output..."
+        android:textColor="#00FF00"
+        android:textSize="9sp"
+        android:fontFamily="monospace"
+        android:padding="6dp"
+        android:scrollbars="vertical" />
+
+</LinearLayout>

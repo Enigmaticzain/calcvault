@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingVertical="@dimen/cv_space_md"
+    android:background="@drawable/bg_vault_panel_soft"
+    android:layout_marginBottom="@dimen/cv_space_sm">
+
+    <!-- Content -->
+    <TextView
+        android:id="@+id/tvResultContent"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:textSize="15sp"
+        android:textColor="@color/cv_text_primary_dark"
+        android:lineSpacingExtra="2dp"
+        android:maxLines="3"
+        android:ellipsize="end"
+        android:paddingHorizontal="@dimen/cv_space_lg"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Metadata -->
+    <TextView
+        android:id="@+id/tvResultMeta"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:textSize="12sp"
+        android:textColor="@color/cv_text_secondary_dark"
+        android:layout_marginTop="@dimen/cv_space_sm"
+        android:paddingHorizontal="@dimen/cv_space_lg"
+        app:layout_constraintTop_toBottomOf="@id/tvResultContent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Relevance Score -->
+    <TextView
+        android:id="@+id/tvResultRelevance"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:textSize="11sp"
+        android:textColor="@color/cv_accent"
+        android:layout_marginTop="@dimen/cv_space_xs"
+        android:paddingHorizontal="@dimen/cv_space_lg"
+        android:paddingBottom="@dimen/cv_space_sm"
+        app:layout_constraintTop_toBottomOf="@id/tvResultMeta"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

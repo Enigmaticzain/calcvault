@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App name shown to OS (disguise) -->
+    <string name="app_name">Calculator</string>
+
+    <!-- Calculator UI -->
+    <string name="btn_clear">AC</string>
+    <string name="btn_plus_minus">+/-</string>
+    <string name="btn_percent">%</string>
+    <string name="btn_divide">÷</string>
+    <string name="btn_multiply">×</string>
+    <string name="btn_minus">−</string>
+    <string name="btn_plus">+</string>
+    <string name="btn_equals">=</string>
+    <string name="btn_backspace">⌫</string>
+    <string name="btn_dot">.</string>
+    <string name="calc_display_default">0</string>
+    <string name="calc_error">Error</string>
+
+    <!-- Auth / Unlock -->
+    <string name="hint_passphrase">Passphrase</string>
+    <string name="btn_unlock">Unlock</string>
+    <string name="btn_biometric">Use Biometric</string>
+    <string name="btn_cancel">Cancel</string>
+    <string name="status_incorrect">Incorrect.</string>
+    <string name="status_locked">Locked:</string>
+    <string name="status_unavailable">System unavailable.</string>
+
+    <!-- Setup -->
+    <string name="setup_passphrase_title">Create Passphrase</string>
+    <string name="setup_decoy_title">Decoy Passphrase</string>
+    <string name="setup_recovery_title">Recovery Key</string>
+    <string name="setup_identity_title">Your Identity</string>
+    <string name="setup_init_title">Initializing</string>
+    <string name="setup_complete">Setup complete.</string>
+    <string name="btn_i_am_user_a">I am User A</string>
+    <string name="btn_i_am_user_b">I am User B</string>
+    <string name="btn_written_down">I\'ve written it down</string>
+    <string name="btn_continue">Continue</string>
+    <string name="btn_finish">Finish</string>
+
+    <!-- Chat -->
+    <string name="hint_message">Message</string>
+    <string name="status_typing">typing…</string>
+    <string name="status_online">● Online</string>
+    <string name="status_offline">● Offline</string>
+
+    <!-- Call -->
+    <string name="call_incoming">Incoming call…</string>
+    <string name="call_calling">Calling…</string>
+    <string name="call_partner_name">Partner</string>
+    <string name="call_status_calling">Calling…</string>
+    <string name="recording_destination">RECORDING DESTINATION</string>
+    <string name="my_secure_usb">My Secure USB</string>
+    <string name="partner_secure_usb">Partner\'s Secure USB</string>
+    <string name="both_drives_dual_sync">Both Drives (Dual-Sync)</string>
+    <string name="start_recording">Start Recording</string>
+    <string name="button_decline">Decline</string>
+    <string name="button_answer">Answer</string>
+    <string name="button_mute">Mute</string>
+    <string name="button_flash">Flash</string>
+    <string name="button_speaker">Speaker</string>
+    <string name="button_record">Record</string>
+    <string name="button_end">End</string>
+
+    <!-- Passphrase / Unlock -->
+    <string name="passphrase_instruction">Enter Vault Passphrase</string>
+    <string name="passphrase_hint">Passphrase</string>
+    <string name="button_unlock">Unlock</string>
+    <string name="button_biometric">Use Biometric</string>
+    <string name="button_back_calculator">Back to Calculator</string>
+
+    <!-- Vault Files -->
+    <string name="vault_storage_title">Vault Storage</string>
+    <string name="vault_files_empty">0 files stored securely</string>
+
+    <!-- Accessibility -->
+    <string name="accessibility_lock_icon">Lock Icon</string>
+    <string name="call_connected">Connected</string>
+    <string name="call_ended">Call ended</string>
+    <string name="btn_answer">✔ Answer</string>
+    <string name="btn_decline">✖ Decline</string>
+    <string name="btn_end_call">End</string>
+    <string name="recording_save_mine">My USB</string>
+    <string name="recording_save_partner">Partner\'s USB</string>
+    <string name="recording_save_both">Both USBs</string>
+
+    <!-- Media -->
+    <string name="media_empty">No media yet.\nSend a photo or video to see it here.</string>
+    <string name="filter_all">All</string>
+    <string name="filter_images">Images</string>
+    <string name="filter_videos">Videos</string>
+    <string name="filter_audio">Audio</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_security">🔐 Security</string>
+    <string name="settings_appearance">🎨 Appearance</string>
+    <string name="settings_triggers">❤️ Emotional Triggers</string>
+    <string name="settings_sync">🔁 Sync</string>
+    <string name="settings_connectivity">📱 Connectivity</string>
+    <string name="settings_danger">⚠️ Danger Zone</string>
+    <string name="settings_change_passphrase">Change Passphrase</string>
+    <string name="settings_change_decoy">Change Decoy Passphrase</string>
+    <string name="settings_destroy_vault">Destroy Vault + Wipe USB</string>
+
+    <!-- Sync -->
+    <string name="sync_title">Sync USB Drives</string>
+    <string name="sync_insert_prompt">Insert both USB drives\nusing an OTG splitter</string>
+    <string name="sync_partner_detected">✅ Partner USB detected!\nReady to sync.</string>
+    <string name="sync_btn_start">Start Sync</string>
+    <string name="sync_complete">✅ Sync complete!</string>
+    <string name="sync_failed">❌ Sync failed</string>
+
+    <!-- Notifications -->
+    <string name="notif_call_ongoing">Call in progress</string>
+    <string name="notif_missed_call">Missed call</string>
+    <string name="notif_message">•</string>
+    <string name="notif_sync_done">Sync complete</string>
+    <string name="notif_usb_connected">Storage connected</string>
+    <string name="notif_usb_removed">Storage disconnected — vault locked</string>
+    <string name="notif_channel_calls">Calls</string>
+    <string name="notif_channel_silent">Background</string>
+
+    <!-- Mood -->
+    <string name="mood_happy">Happy</string>
+    <string name="mood_sad">Sad</string>
+    <string name="mood_angry">Angry</string>
+    <string name="mood_love">Love</string>
+    <string name="mood_sleepy">Sleepy</string>
+    <string name="mood_busy">Busy</string>
+    <string name="mood_focus">Focus</string>
+    <string name="mood_question">How are you feeling?</string>
+
+    <!-- Share receiver -->
+    <string name="share_saved">Saved to vault ✓</string>
+    <string name="share_vault_locked">Vault locked — unlock first</string>
+    <string name="share_unsupported">File type not supported</string>
+    <string name="share_encrypting">Encrypting and saving…</string>
+
+    <!-- Errors -->
+    <string name="error_usb_not_found">USB drive not found</string>
+    <string name="error_vault_locked">Vault is locked</string>
+    <string name="error_biometric_failed">Biometric not recognized</string>
+    <string name="error_network">Network unavailable — message queued</string>
+    <string name="error_ssl">SSL error — connection blocked</string>
+    <string name="error_https_only">Only HTTPS allowed</string>
+</resources>

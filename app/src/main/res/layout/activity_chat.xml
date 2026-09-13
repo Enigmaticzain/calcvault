@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/chatRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_vault_screen">
+
+    <!-- Ambient background animation -->
+    <com.calcvault.ui.ambient.AmbientAnimationView
+        android:id="@+id/ambientView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/transparent">
+
+        <!-- Header bar -->
+        <LinearLayout
+            android:id="@+id/headerBar"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/cv_space_lg"
+            android:layout_marginTop="@dimen/cv_space_lg"
+            android:layout_marginEnd="@dimen/cv_space_lg"
+            android:orientation="vertical"
+            android:background="@drawable/bg_vault_panel_soft"
+            android:paddingStart="@dimen/cv_space_xl"
+            android:paddingEnd="@dimen/cv_space_xl"
+            android:paddingTop="44dp"
+            android:paddingBottom="@dimen/cv_space_md"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <!-- Partner Nickname Display -->
+                    <TextView
+                        android:id="@+id/tvPartnerNickname"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Partner"
+                        android:textSize="20sp"
+                        android:textColor="@color/cv_text_primary_dark"
+                        android:fontFamily="sans-serif-medium" />
+
+                    <TextView
+                        android:id="@+id/tvPresence"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/cv_space_xs"
+                        android:background="@drawable/bg_vault_chip"
+                        android:paddingStart="@dimen/cv_space_md"
+                        android:paddingTop="@dimen/cv_space_xs"
+                        android:paddingEnd="@dimen/cv_space_md"
+                        android:paddingBottom="@dimen/cv_space_xs"
+                        android:text="@string/status_offline"
+                        android:textSize="12sp"
+                        android:textColor="@color/cv_text_secondary_dark" />
+                </LinearLayout>
+
+                <!-- Toggle Ambient Button -->
+                <ImageButton
+                    android:id="@+id/btnToggleAmbient"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_toStartOf="@id/tvPartnerMood"
+                    android:layout_marginEnd="@dimen/cv_space_sm"
+                    android:background="@drawable/bg_circle_surface"
+                    android:padding="@dimen/cv_space_sm"
+                    android:src="@android:drawable/ic_menu_gallery"
+                    app:tint="@color/cv_text_secondary_dark"
+                    android:visibility="visible"
+                    android:contentDescription="Toggle ambient" />
+
+                <TextView
+                    android:id="@+id/tvPartnerMood"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
+                    android:background="@drawable/bg_vault_chip"
+                    android:paddingStart="@dimen/cv_space_md"
+                    android:paddingTop="@dimen/cv_space_xs"
+                    android:paddingEnd="@dimen/cv_space_md"
+                    android:paddingBottom="@dimen/cv_space_xs"
+                    android:text=""
+                    android:textSize="13sp"
+                    android:textColor="@color/cv_text_secondary_dark" />
+            </RelativeLayout>
+
+            <!-- Typing indicator -->
+            <TextView
+                android:id="@+id/tvTyping"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/cv_space_sm"
+                android:text=""
+                android:textSize="12sp"
+                android:textColor="@color/cv_text_tertiary_dark"
+                android:minHeight="16dp" />
+
+        </LinearLayout>
+
+        <!-- Messages list -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvMessages"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:paddingStart="@dimen/cv_space_sm"
+            android:paddingEnd="@dimen/cv_space_sm"
+            android:paddingTop="@dimen/cv_space_md"
+            android:paddingBottom="@dimen/cv_space_md"
+            android:clipToPadding="false"
+            android:scrollbars="none"
+            android:overScrollMode="never"
+            app:layout_constraintTop_toBottomOf="@id/headerBar"
+            app:layout_constraintBottom_toTopOf="@id/mediaPanel"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <!-- Recorder/Capture Panel -->
+        <FrameLayout
+            android:id="@+id/mediaPanel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/cv_space_lg"
+            android:layout_marginEnd="@dimen/cv_space_lg"
+            android:layout_marginBottom="@dimen/cv_space_sm"
+            android:visibility="gone"
+            android:minHeight="220dp"
+            android:background="@drawable/bg_vault_panel"
+            app:layout_constraintBottom_toTopOf="@id/inputBar"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <!-- In-app camera preview or recorder UI will be injected here -->
+            <TextView
+                android:id="@+id/tvMediaStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="Select an action"
+                android:textColor="@color/cv_text_secondary_dark"
+                android:textSize="15sp" />
+        </FrameLayout>
+
+        <!-- Input bar -->
+        <LinearLayout
+            android:id="@+id/inputBar"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/cv_space_lg"
+            android:layout_marginEnd="@dimen/cv_space_lg"
+            android:layout_marginBottom="@dimen/cv_space_lg"
+            android:orientation="horizontal"
+            android:background="@drawable/bg_vault_input_bar"
+            android:paddingStart="@dimen/cv_space_md"
+            android:paddingEnd="@dimen/cv_space_md"
+            android:paddingTop="@dimen/cv_space_sm"
+            android:paddingBottom="@dimen/cv_space_md"
+            android:gravity="center_vertical"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <!-- Attach media button -->
+            <ImageButton
+                android:id="@+id/btnAttach"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:src="@android:drawable/ic_menu_add"
+                android:background="@drawable/bg_circle_surface"
+                app:tint="@color/cv_text_secondary_dark"
+                android:contentDescription="Attach media"
+                android:scaleType="centerInside" />
+
+            <!-- Text input -->
+            <EditText
+                android:id="@+id/etInput"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/cv_space_sm"
+                android:layout_marginEnd="@dimen/cv_space_sm"
+                android:hint="@string/hint_message"
+                android:textSize="16sp"
+                android:textColor="@color/cv_text_primary_dark"
+                android:textColorHint="@color/cv_text_secondary_dark"
+                android:textCursorDrawable="@null"
+                android:background="@drawable/bg_vault_message_input"
+                android:gravity="center_vertical"
+                android:inputType="textMultiLine|textCapSentences"
+                android:maxLines="5"
+                android:paddingStart="@dimen/cv_space_lg"
+                android:paddingEnd="@dimen/cv_space_lg" />
+
+            <!-- Send button -->
+            <ImageButton
+                android:id="@+id/btnSend"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:src="@android:drawable/ic_menu_send"
+                android:background="@drawable/bg_circle_accent"
+                app:tint="@color/cv_text_primary_dark"
+                android:contentDescription="Send message"
+                android:scaleType="centerInside" />
+
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</FrameLayout>

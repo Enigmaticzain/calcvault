@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/cv_recv_bubble_dark" />
+    <corners
+        android:topLeftRadius="@dimen/cv_radius_lg"
+        android:topRightRadius="@dimen/cv_radius_lg"
+        android:bottomLeftRadius="@dimen/cv_space_sm"
+        android:bottomRightRadius="@dimen/cv_radius_lg" />
+</shape>

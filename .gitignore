@@ -1,0 +1,37 @@
+# Android
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.navigation/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aar
+
+# Node.js
+node_modules/
+dist/
+dist-ssr/
+*.local
+.env
+.env.*
+!.env.example
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+*.zip
+*.webm
+temp_assets/
+.vscode/
+.codex
+test_write.txt
+build_log.txt
+build_output.txt
+zain_17882311679967359/

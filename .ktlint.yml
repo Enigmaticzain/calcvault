@@ -1,0 +1,55 @@
+# KtLint Configuration for CalcVault
+# Enforces Kotlin style consistency across the project
+
+rules:
+  comments-spacing:
+    enabled: true
+  filename:
+    enabled: true
+  final-newline:
+    enabled: true
+  import-ordering:
+    enabled: false  # Disabled to allow flexibility
+  indentation:
+    enabled: true
+    indent-size: 4
+  max-line-length:
+    enabled: true
+    max-line-length: 120
+  no-blank-lines-in-chained-method-calls:
+    enabled: true
+  no-consecutive-blank-lines:
+    enabled: true
+  no-empty-first-line-in-class-body:
+    enabled: true
+  no-multiple-spaces:
+    enabled: true
+  no-trailing-commas:
+    enabled: true
+  no-unit-return:
+    enabled: true
+  no-unused-imports:
+    enabled: true
+  no-wildcard-imports:
+    enabled: false  # Disabled for flexibility
+  package-name:
+    enabled: true
+  parameter-list-wrapping:
+    enabled: true
+    indent-size: 4
+  spacing-around-angle-brackets:
+    enabled: true
+  spacing-around-colon:
+    enabled: true
+  spacing-around-comma:
+    enabled: true
+  spacing-around-curly:
+    enabled: true
+  spacing-around-keyword:
+    enabled: true
+  spacing-around-operators:
+    enabled: true
+  spacing-before-opening-angle-bracket:
+    enabled: true
+  trailing-comma:
+    enabled: true

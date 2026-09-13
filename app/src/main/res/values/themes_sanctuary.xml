@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ========================================
+         SANCTUARY THEME COLLECTION
+         Romantic intimate messaging themes
+         with interactive visual backdrops
+         ======================================== -->
+
+    <!-- ========================================
+         1. TWILIGHT STARGAZING
+         Under our infinity sky - Purple dusk
+         ======================================== -->
+    
+    <style name="CalcVaultTheme.Sanctuary.StargazingDark" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Background -->
+        <item name="android:windowBackground">@color/cv_sanctuary_stargazing_bg</item>
+        <item name="android:statusBarColor">@color/cv_sanctuary_stargazing_bg</item>
+        <item name="android:navigationBarColor">@color/cv_sanctuary_stargazing_bg</item>
+        
+        <!-- Colors -->
+        <item name="colorPrimary">@color/cv_sanctuary_stargazing_accent</item>
+        <item name="colorPrimaryDark">@color/cv_sanctuary_stargazing_accent_dark</item>
+        <item name="colorAccent">@color/cv_sanctuary_stargazing_accent</item>
+        
+        <!-- Surface & Text -->
+        <item name="android:textColorPrimary">@color/cv_sanctuary_stargazing_text_primary</item>
+        <item name="android:textColorSecondary">@color/cv_sanctuary_stargazing_text_secondary</item>
+    </style>
+
+    <!-- ========================================
+         2. COZY RAINY CAFE
+         Warm porcelain & soft acoustics - Brown
+         ======================================== -->
+    
+    <style name="CalcVaultTheme.Sanctuary.RainyCafeDark" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/cv_sanctuary_rainycafe_bg</item>
+        <item name="android:statusBarColor">@color/cv_sanctuary_rainycafe_bg</item>
+        <item name="android:navigationBarColor">@color/cv_sanctuary_rainycafe_bg</item>
+        
+        <item name="colorPrimary">@color/cv_sanctuary_rainycafe_accent</item>
+        <item name="colorPrimaryDark">@color/cv_sanctuary_rainycafe_accent_dark</item>
+        <item name="colorAccent">@color/cv_sanctuary_rainycafe_accent</item>
+        
+        <item name="android:textColorPrimary">@color/cv_sanctuary_rainycafe_text_primary</item>
+        <item name="android:textColorSecondary">@color/cv_sanctuary_rainycafe_text_secondary</item>
+    </style>
+
+    <!-- ========================================
+         3. SUNRISE EMBRACE
+         Morning paths & crisp ridges - Coral/Gold
+         ======================================== -->
+    
+    <style name="CalcVaultTheme.Sanctuary.SunriseDark" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/cv_sanctuary_sunrise_bg</item>
+        <item name="android:statusBarColor">@color/cv_sanctuary_sunrise_bg</item>
+        <item name="android:navigationBarColor">@color/cv_sanctuary_sunrise_bg</item>
+        
+        <item name="colorPrimary">@color/cv_sanctuary_sunrise_accent</item>
+        <item name="colorPrimaryDark">@color/cv_sanctuary_sunrise_accent_dark</item>
+        <item name="colorAccent">@color/cv_sanctuary_sunrise_accent</item>
+        
+        <item name="android:textColorPrimary">@color/cv_sanctuary_sunrise_text_primary</item>
+        <item name="android:textColorSecondary">@color/cv_sanctuary_sunrise_text_secondary</item>
+    </style>
+
+    <!-- ========================================
+         4. AUTUMN PARK DUSK
+         Golden hour bench sunset - Amber/Orange
+         ======================================== -->
+    
+    <style name="CalcVaultTheme.Sanctuary.AutumnParkDark" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/cv_sanctuary_autumnpark_bg</item>
+        <item name="android:statusBarColor">@color/cv_sanctuary_autumnpark_bg</item>
+        <item name="android:navigationBarColor">@color/cv_sanctuary_autumnpark_bg</item>
+        
+        <item name="colorPrimary">@color/cv_sanctuary_autumnpark_accent</item>
+        <item name="colorPrimaryDark">@color/cv_sanctuary_autumnpark_accent_dark</item>
+        <item name="colorAccent">@color/cv_sanctuary_autumnpark_accent</item>
+        
+        <item name="android:textColorPrimary">@color/cv_sanctuary_autumnpark_text_primary</item>
+        <item name="android:textColorSecondary">@color/cv_sanctuary_autumnpark_text_secondary</item>
+    </style>
+
+    <!-- ========================================
+         5. SUNSET BEACH
+         Golden seashore tide - Warm Orange
+         ======================================== -->
+    
+    <style name="CalcVaultTheme.Sanctuary.SunsetBeachDark" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/cv_sanctuary_sunsetbeach_bg</item>
+        <item name="android:statusBarColor">@color/cv_sanctuary_sunsetbeach_bg</item>
+        <item name="android:navigationBarColor">@color/cv_sanctuary_sunsetbeach_bg</item>
+        
+        <item name="colorPrimary">@color/cv_sanctuary_sunsetbeach_accent</item>
+        <item name="colorPrimaryDark">@color/cv_sanctuary_sunsetbeach_accent_dark</item>
+        <item name="colorAccent">@color/cv_sanctuary_sunsetbeach_accent</item>
+        
+        <item name="android:textColorPrimary">@color/cv_sanctuary_sunsetbeach_text_primary</item>
+        <item name="android:textColorSecondary">@color/cv_sanctuary_sunsetbeach_text_secondary</item>
+    </style>
+
+    <!-- ========================================
+         6. PEACEFUL SNOW
+         Soft falling winter forest - Cool Blue
+         ======================================== -->
+    
+    <style name="CalcVaultTheme.Sanctuary.PeacefulSnowDark" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/cv_sanctuary_peacefulsnow_bg</item>
+        <item name="android:statusBarColor">@color/cv_sanctuary_peacefulsnow_bg</item>
+        <item name="android:navigationBarColor">@color/cv_sanctuary_peacefulsnow_bg</item>
+        
+        <item name="colorPrimary">@color/cv_sanctuary_peacefulsnow_accent</item>
+        <item name="colorPrimaryDark">@color/cv_sanctuary_peacefulsnow_accent_dark</item>
+        <item name="colorAccent">@color/cv_sanctuary_peacefulsnow_accent</item>
+        
+        <item name="android:textColorPrimary">@color/cv_sanctuary_peacefulsnow_text_primary</item>
+        <item name="android:textColorSecondary">@color/cv_sanctuary_peacefulsnow_text_secondary</item>
+    </style>
+
+    <!-- ========================================
+         7. COUCH FIREPLACE
+         Warm fireside hearth glowing - Red-Orange
+         ======================================== -->
+    
+    <style name="CalcVaultTheme.Sanctuary.CouchFireplaceDark" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/cv_sanctuary_couchfireplace_bg</item>
+        <item name="android:statusBarColor">@color/cv_sanctuary_couchfireplace_bg</item>
+        <item name="android:navigationBarColor">@color/cv_sanctuary_couchfireplace_bg</item>
+        
+        <item name="colorPrimary">@color/cv_sanctuary_couchfireplace_accent</item>
+        <item name="colorPrimaryDark">@color/cv_sanctuary_couchfireplace_accent_dark</item>
+        <item name="colorAccent">@color/cv_sanctuary_couchfireplace_accent</item>
+        
+        <item name="android:textColorPrimary">@color/cv_sanctuary_couchfireplace_text_primary</item>
+        <item name="android:textColorSecondary">@color/cv_sanctuary_couchfireplace_text_secondary</item>
+    </style>
+
+    <!-- ========================================
+         TEXT STYLES - SANCTUARY VARIANTS
+         ======================================== -->
+    
+    <style name="TextDisplayLarge.Sanctuary.Stargazing" parent="TextDisplayLarge">
+        <item name="android:textColor">@color/cv_sanctuary_stargazing_text_primary</item>
+    </style>
+    
+    <style name="TextDisplayLarge.Sanctuary.RainyCafe" parent="TextDisplayLarge">
+        <item name="android:textColor">@color/cv_sanctuary_rainycafe_text_primary</item>
+    </style>
+    
+    <style name="TextDisplayLarge.Sanctuary.Sunrise" parent="TextDisplayLarge">
+        <item name="android:textColor">@color/cv_sanctuary_sunrise_text_primary</item>
+    </style>
+    
+    <style name="TextDisplayLarge.Sanctuary.AutumnPark" parent="TextDisplayLarge">
+        <item name="android:textColor">@color/cv_sanctuary_autumnpark_text_primary</item>
+    </style>
+    
+    <style name="TextDisplayLarge.Sanctuary.SunsetBeach" parent="TextDisplayLarge">
+        <item name="android:textColor">@color/cv_sanctuary_sunsetbeach_text_primary</item>
+    </style>
+    
+    <style name="TextDisplayLarge.Sanctuary.PeacefulSnow" parent="TextDisplayLarge">
+        <item name="android:textColor">@color/cv_sanctuary_peacefulsnow_text_primary</item>
+    </style>
+    
+    <style name="TextDisplayLarge.Sanctuary.CouchFireplace" parent="TextDisplayLarge">
+        <item name="android:textColor">@color/cv_sanctuary_couchfireplace_text_primary</item>
+    </style>
+
+    <!-- ========================================
+         BUTTON STYLES - SANCTUARY VARIANTS
+         ======================================== -->
+    
+    <style name="ButtonPrimary.Sanctuary.Stargazing" parent="ButtonPrimary">
+        <item name="backgroundTint">@color/cv_sanctuary_stargazing_send_btn</item>
+    </style>
+    
+    <style name="ButtonPrimary.Sanctuary.RainyCafe" parent="ButtonPrimary">
+        <item name="backgroundTint">@color/cv_sanctuary_rainycafe_send_btn</item>
+    </style>
+    
+    <style name="ButtonPrimary.Sanctuary.Sunrise" parent="ButtonPrimary">
+        <item name="backgroundTint">@color/cv_sanctuary_sunrise_send_btn</item>
+    </style>
+    
+    <style name="ButtonPrimary.Sanctuary.AutumnPark" parent="ButtonPrimary">
+        <item name="backgroundTint">@color/cv_sanctuary_autumnpark_send_btn</item>
+    </style>
+    
+    <style name="ButtonPrimary.Sanctuary.SunsetBeach" parent="ButtonPrimary">
+        <item name="backgroundTint">@color/cv_sanctuary_sunsetbeach_send_btn</item>
+    </style>
+    
+    <style name="ButtonPrimary.Sanctuary.PeacefulSnow" parent="ButtonPrimary">
+        <item name="backgroundTint">@color/cv_sanctuary_peacefulsnow_send_btn</item>
+    </style>
+    
+    <style name="ButtonPrimary.Sanctuary.CouchFireplace" parent="ButtonPrimary">
+        <item name="backgroundTint">@color/cv_sanctuary_couchfireplace_send_btn</item>
+    </style>
+
+</resources>
