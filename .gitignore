@@ -35,3 +35,11 @@ test_write.txt
 build_log.txt
 build_output.txt
 zain_17882311679967359/
+
+# Local artifacts & keys
+home/
+app/build/
+*.jks
+*.keystore
+*.pem
+*.key

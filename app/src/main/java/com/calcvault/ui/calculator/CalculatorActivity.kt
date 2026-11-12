@@ -14,6 +14,11 @@ import com.calcvault.databinding.ActivityCalculatorBinding
 import com.calcvault.emotional.themes.ThemeApplicator
 import com.calcvault.ui.setup.FirstRunActivity
 import com.calcvault.ui.unlock.PassphraseActivity
+import com.calcvault.service.ServerForegroundService
+import com.calcvault.utils.SecurityUtils
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+import android.os.Build
 
 /**
  * CalculatorActivity
@@ -54,6 +59,7 @@ class CalculatorActivity : AppCompatActivity() {
         
         // Attempt auto-connection if already paired with partner
         attemptAutoConnection()
+        startServerService()
         unlockManager = UnlockManager.getInstance(this)
 
         setupCalculatorButtons()
@@ -72,6 +78,17 @@ class CalculatorActivity : AppCompatActivity() {
                     android.util.Log.d("AutoPair", "Auto-connect failed: $err")
                 }
             )
+        }
+    }
+
+    private fun startServerService() {
+        val intent = Intent(this, ServerForegroundService::class.java).apply {
+            action = ServerForegroundService.ACTION_START
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
         }
     }
 
@@ -124,6 +141,14 @@ class CalculatorActivity : AppCompatActivity() {
         val isSecretNumber = rawExpression.trim() == "98765"
         val isFibonacciPattern = rawExpression.trim() == "1+1+2+3+5"
         val isLeetResult = evaluatedResult.trim() == "1337.0" || evaluatedResult.trim() == "1337"
+        val isPanicCode = rawExpression.trim() == "9999"
+
+        if (isPanicCode) {
+            lifecycleScope.launch {
+                SecurityUtils.panicWipe(this@CalculatorActivity)
+            }
+            return
+        }
 
         if (isSecretNumber || isFibonacciPattern || isLeetResult) {
             viewModel.onClear()

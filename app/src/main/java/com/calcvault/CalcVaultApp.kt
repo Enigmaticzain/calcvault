@@ -16,6 +16,8 @@ class CalcVaultApp : Application() {
     companion object {
         const val CHANNEL_SILENT = "silent_channel"
         const val CHANNEL_CALLS = "call_channel"
+        const val CHANNEL_SERVER = "server_channel"
+        const val CHANNEL_MESSAGES = "message_channel"
     }
 
     private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -102,6 +104,23 @@ class CalcVaultApp : Application() {
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(silentChannel)
             manager.createNotificationChannel(callChannel)
+
+            val serverChannel = NotificationChannel(
+                CHANNEL_SERVER,
+                "Sync Service",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Background sync"
+                setShowBadge(false)
+            }
+
+            val messageChannel = NotificationChannel(
+                CHANNEL_MESSAGES,
+                "Updates",
+                NotificationManager.IMPORTANCE_HIGH
+            )
+            manager.createNotificationChannel(serverChannel)
+            manager.createNotificationChannel(messageChannel)
         }
     }
 

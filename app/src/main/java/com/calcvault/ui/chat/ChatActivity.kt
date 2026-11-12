@@ -63,6 +63,8 @@ import java.io.File
  */
 import com.calcvault.chat.*
 import com.calcvault.emotional.themes.DoraemonMessageBridge
+import com.calcvault.p2p.PeerManager
+
 class ChatActivity : AppCompatActivity() {
 
     private lateinit var themeEngine: ThemeEngine
@@ -72,6 +74,7 @@ class ChatActivity : AppCompatActivity() {
     private lateinit var storageEngine: USBStorageEngine
     private lateinit var mediaManager: MediaChunkManager
     private lateinit var messageAdapter: MessageAdapter
+    private lateinit var peerManager: PeerManager
     private var rootLayout: FrameLayout? = null
     private var backgroundEngine: BackgroundCharacterInteractionEngine? = null
 
@@ -84,6 +87,7 @@ class ChatActivity : AppCompatActivity() {
     // User IDs
     private var localUserId = "zain"
     private var partnerUserId = "sanu"
+    private var partnerIpAddress: String? = null
     private var pendingSnapUri: Uri? = null
 
     companion object {
@@ -108,6 +112,7 @@ class ChatActivity : AppCompatActivity() {
         storageEngine = USBStorageEngine.getInstance(this)
         messageDB = AppendOnlyMessageDB(storageEngine)
         mediaManager = MediaChunkManager(storageEngine, messageDB)
+        peerManager = PeerManager()
 
         localUserId = SessionManager.localUserId.ifBlank { "zain" }
         partnerUserId = SessionManager.partnerUserId.ifBlank {
@@ -461,6 +466,14 @@ class ChatActivity : AppCompatActivity() {
                 backgroundEngine?.onMessageArrived(msg.content, ChatCharacter.fromSenderId(msg.from))
             }
         }
+
+        networkEngine.onPresenceUpdate = { userId, status ->
+            if (userId == partnerUserId && status == "ONLINE") {
+                partnerIpAddress = networkEngine.partnerIpAddress
+            } else if (userId == partnerUserId && status == "OFFLINE") {
+                partnerIpAddress = null
+            }
+        }
     }
 
     private fun loadMessages() {
@@ -656,11 +669,28 @@ class ChatActivity : AppCompatActivity() {
             )
 
             messageDB.saveMessage(message)
-            networkEngine.sendEncryptedPayload(
-                id = message.id,
-                data = content.toByteArray(Charsets.UTF_8),
-                type = AppendOnlyMessageDB.MSG_TEXT
-            )
+
+            // Try P2P delivery if IP is known
+            var p2pSent = false
+            partnerIpAddress?.let { ip ->
+                p2pSent = peerManager.sendMessage(
+                    peerAddress = ip,
+                    messageText = content,
+                    senderId = localUserId,
+                    recipientId = partnerUserId
+                )
+            }
+
+            // Fallback to relay if P2P failed
+            if (!p2pSent) {
+                networkEngine.sendEncryptedPayload(
+                    id = message.id,
+                    data = content.toByteArray(Charsets.UTF_8),
+                    type = AppendOnlyMessageDB.MSG_TEXT
+                )
+            } else {
+                messageDB.markDelivered(message.id)
+            }
 
             withContext(Dispatchers.Main) {
                 messageAdapter.addMessage(message)

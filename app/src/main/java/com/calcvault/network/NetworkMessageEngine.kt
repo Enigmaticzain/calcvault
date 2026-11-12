@@ -152,6 +152,8 @@ class NetworkMessageEngine(
         private set
     var connectionState = ConnectionState.DISCONNECTED
         private set
+    var partnerIpAddress: String? = null
+        private set
 
     var onMessageReceived: ((MessageRecord) -> Unit)? = null
     var onPresenceUpdate: ((String, String) -> Unit)? = null
@@ -384,8 +386,10 @@ class NetworkMessageEngine(
         val partner = response.json ?: JSONObject()
         val online = partner.optBoolean("online", false)
         if (online) {
+            partnerIpAddress = partner.optString("ip").takeIf { it.isNotBlank() }
             markPartnerSeen(partner.optString("deviceId").ifBlank { partner.optString("device_id").ifBlank { partnerUserId } })
         } else {
+            partnerIpAddress = null
             maybeExpirePartnerPresence(force = true)
         }
         onPresenceUpdate?.invoke(partnerUserId, if (online) "ONLINE" else "OFFLINE")

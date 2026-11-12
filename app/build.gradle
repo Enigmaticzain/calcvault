@@ -93,11 +93,21 @@ dependencies {
     implementation 'androidx.security:security-crypto:1.1.0'
     implementation 'net.zetetic:android-database-sqlcipher:4.5.4'
     implementation 'androidx.sqlite:sqlite-ktx:2.4.0'
+    
+    // Room Database
+    def room_version = "2.6.1"
+    implementation "androidx.room:room-runtime:$room_version"
+    implementation "androidx.room:room-ktx:$room_version"
+    kapt "androidx.room:room-compiler:$room_version"
+
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1'
     implementation 'com.airbnb.android:lottie:6.4.0'
     implementation 'com.github.bumptech.glide:glide:4.16.0'
-    implementation 'com.infobip:google-webrtc:1.0.45036'
+    
+    // WebRTC
+    implementation 'io.getstream:stream-webrtc-android:1.1.1'
+    
     implementation 'com.github.mik3y:usb-serial-for-android:3.7.0'
     implementation 'androidx.dynamicanimation:dynamicanimation:1.1.0'
     
@@ -107,6 +117,24 @@ dependencies {
     // Networking & QR
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'org.java-websocket:Java-WebSocket:1.5.6'
+    
+    // Embedded Server (Ktor)
+    def ktor_version = "2.3.7"
+    implementation "io.ktor:ktor-server-core:$ktor_version"
+    implementation "io.ktor:ktor-server-cio:$ktor_version"
+    implementation "io.ktor:ktor-server-content-negotiation:$ktor_version"
+    implementation "io.ktor:ktor-serialization-gson:$ktor_version"
+    implementation "io.ktor:ktor-server-websockets:$ktor_version"
+
+    // Ktor Client
+    implementation "io.ktor:ktor-client-core:$ktor_version"
+    implementation "io.ktor:ktor-client-cio:$ktor_version"
+    implementation "io.ktor:ktor-client-websockets:$ktor_version"
+    implementation "io.ktor:ktor-client-content-negotiation:$ktor_version"
+
+    // Signal Protocol
+    implementation "org.signal:libsignal-client:0.32.1"
+
     implementation 'com.google.zxing:core:3.5.3'
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
 
