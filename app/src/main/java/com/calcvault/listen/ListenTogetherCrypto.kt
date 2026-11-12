@@ -5,49 +5,31 @@ import com.calcvault.crypto.E2EKeyManager
 import org.json.JSONObject
 
 /**
- * Lightweight payload wrapper for listen-control signals.
- * Only control metadata is transmitted, never the music file itself.
+ * Legacy envelope helper retained for compatibility. It fails closed when local crypto fails and
+ * never includes a plaintext fallback. Its existence does not establish peer key agreement,
+ * authenticated identity, or a verified end-to-end protocol; the current Listen Together path
+ * deliberately sends only consented control metadata over HTTPS instead.
  */
+@Deprecated("Not a verified peer E2EE protocol; use the consent-gated control transport")
 object ListenTogetherCrypto {
-
-    fun wrap(payload: JSONObject): JSONObject {
+    fun wrap(payload: JSONObject): JSONObject? = runCatching {
         val bytes = payload.toString().toByteArray(Charsets.UTF_8)
-        return try {
-            val encrypted = E2EKeyManager.getInstance().encrypt(bytes)
-            JSONObject().apply {
-                put("enc", true)
-                put("blob", Base64.encodeToString(encrypted, Base64.NO_WRAP))
-                put("fallback", Base64.encodeToString(bytes, Base64.NO_WRAP))
-            }
-        } catch (_: Exception) {
-            JSONObject().apply {
-                put("enc", false)
-                put("blob", Base64.encodeToString(bytes, Base64.NO_WRAP))
-            }
+        val encrypted = E2EKeyManager.getInstance().encrypt(bytes)
+        require(encrypted.isNotEmpty())
+        JSONObject().apply {
+            put("enc", true)
+            put("blob", Base64.encodeToString(encrypted, Base64.NO_WRAP))
         }
-    }
+    }.getOrNull()
 
     fun unwrap(container: JSONObject?): JSONObject? {
-        if (container == null) return null
+        if (container == null || !container.optBoolean("enc", false)) return null
         val blob = container.optString("blob")
         if (blob.isBlank()) return null
-
-        return try {
-            val raw = Base64.decode(blob, Base64.DEFAULT)
-            val decoded = if (container.optBoolean("enc", false)) {
-                E2EKeyManager.getInstance().decrypt(raw)
-            } else {
-                raw
-            }
+        return runCatching {
+            val encrypted = Base64.decode(blob, Base64.DEFAULT)
+            val decoded = E2EKeyManager.getInstance().decrypt(encrypted)
             JSONObject(decoded.toString(Charsets.UTF_8))
-        } catch (_: Exception) {
-            val fallback = container.optString("fallback")
-            if (fallback.isBlank()) return null
-            return try {
-                JSONObject(Base64.decode(fallback, Base64.DEFAULT).toString(Charsets.UTF_8))
-            } catch (_: Exception) {
-                null
-            }
-        }
+        }.getOrNull()
     }
 }

@@ -1,125 +1,94 @@
 package com.calcvault.storage
 
+import android.util.AtomicFile
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
 /**
- * RemoteFileRefManager
- *
- * Manages metadata references to files stored on remote devices (e.g., Sanu's references to Zain's files).
- *
- * When a file is too large for Sanu to store locally, this manager creates a reference containing:
- * - File ID
- * - Name and size
- * - Owner (Zain)
- * - Thumbnail path
- * - Access state (LOCKED/AVAILABLE)
- * - Sync metadata
- *
- * Storage path:
- * /calcvault/storage/remote_refs.json
+ * Remote references are local metadata only. This manager does not transfer files or enforce
+ * grants on an owner device; authorization here is advisory until a remote enforcement service
+ * checks the same grant before each read.
  */
-class RemoteFileRefManager(private val storageRoot: String = "/calcvault/storage") {
+class RemoteFileRefManager(private val storageRoot: String) {
 
     companion object {
         private const val TAG = "RemoteFileRefManager"
         const val REFS_FILENAME = "remote_refs.json"
     }
 
-    /**
-     * Remote references database
-     */
     data class RemoteRefsDB(
         val version: String = "1.0",
         val createdAt: Long = System.currentTimeMillis(),
         val refs: MutableList<UserOwnershipManager.RemoteFileRef> = mutableListOf()
     ) {
-        fun toJson(): JSONObject {
-            val obj = JSONObject()
-            obj.put("version", version)
-            obj.put("createdAt", createdAt)
-
-            val refsArray = JSONArray()
-            refs.forEach { ref ->
-                refsArray.put(ref.toJson())
-            }
-            obj.put("refs", refsArray)
-
-            return obj
+        fun toJson(): JSONObject = JSONObject().apply {
+            put("version", version)
+            put("createdAt", createdAt)
+            put("refs", JSONArray().apply { refs.forEach { put(it.toJson()) } })
         }
 
         companion object {
             fun fromJson(obj: JSONObject): RemoteRefsDB {
                 val refsArray = obj.optJSONArray("refs") ?: JSONArray()
                 val refs = mutableListOf<UserOwnershipManager.RemoteFileRef>()
-
                 for (i in 0 until refsArray.length()) {
-                    val refObj = refsArray.getJSONObject(i)
-                    UserOwnershipManager.RemoteFileRef.fromJson(refObj)?.let {
-                        refs.add(it)
-                    }
+                    UserOwnershipManager.RemoteFileRef.fromJson(refsArray.getJSONObject(i))?.let(refs::add)
                 }
-
                 return RemoteRefsDB(
-                    version = obj.getString("version"),
-                    createdAt = obj.getLong("createdAt"),
+                    version = obj.optString("version", "1.0"),
+                    createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
                     refs = refs
                 )
             }
         }
     }
 
-    // In-memory cache
+    // In-memory cache; grant/revoke mutations are serialized within this manager instance.
     private var db: RemoteRefsDB? = null
+    private val grantMutationMutex = Mutex()
 
-    // ─── Database Operations ───────────────────────────────────────────────
-
-    /**
-     * Load remote references from disk
-     */
     suspend fun load(): Boolean = withContext(Dispatchers.IO) {
         try {
             val refFile = File(storageRoot, REFS_FILENAME)
-
-            if (!refFile.exists()) {
+            val backupFile = File("${refFile.path}.bak")
+            if (!refFile.exists() && !backupFile.exists()) {
                 Log.d(TAG, "No existing refs file, creating new database")
                 db = RemoteRefsDB()
                 return@withContext true
             }
-
-            val jsonString = refFile.readText()
-            val jsonObj = JSONObject(jsonString)
-            db = RemoteRefsDB.fromJson(jsonObj)
-
+            val jsonString = AtomicFile(refFile).openRead().bufferedReader(Charsets.UTF_8).use { it.readText() }
+            db = RemoteRefsDB.fromJson(JSONObject(jsonString))
             Log.i(TAG, "Loaded ${db?.refs?.size ?: 0} remote references")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Error loading remote references", e)
-            db = RemoteRefsDB() // Fall back to empty
+            db = RemoteRefsDB()
             false
         }
     }
 
-    /**
-     * Save remote references to disk
-     */
     suspend fun save(): Boolean = withContext(Dispatchers.IO) {
         try {
-            val db = db ?: return@withContext false
-
+            val current = db ?: return@withContext false
             val refDir = File(storageRoot)
-            if (!refDir.exists()) {
-                refDir.mkdirs()
+            if (!refDir.isDirectory && !refDir.mkdirs()) return@withContext false
+            val atomicFile = AtomicFile(File(refDir, REFS_FILENAME))
+            var stream: java.io.FileOutputStream? = null
+            try {
+                val pending = atomicFile.startWrite()
+                stream = pending
+                pending.write(current.toJson().toString(2).toByteArray(Charsets.UTF_8))
+                atomicFile.finishWrite(pending)
+                stream = null
+            } finally {
+                stream?.let { pending -> runCatching { atomicFile.failWrite(pending) } }
             }
-
-            val refFile = File(refDir, REFS_FILENAME)
-            refFile.writeText(db.toJson().toString(2))
-
-            Log.d(TAG, "Saved ${db.refs.size} remote references")
+            Log.d(TAG, "Saved ${current.refs.size} remote references")
             true
         } catch (e: Exception) {
             Log.e(TAG, "Error saving remote references", e)
@@ -127,244 +96,199 @@ class RemoteFileRefManager(private val storageRoot: String = "/calcvault/storage
         }
     }
 
-    // ─── Reference Management ──────────────────────────────────────────────
-
-    /**
-     * Add a new remote file reference
-     */
     suspend fun addRef(ref: UserOwnershipManager.RemoteFileRef): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (db == null) {
-                db = RemoteRefsDB()
-            }
-
-            // Remove if already exists
-            db!!.refs.removeAll { it.id == ref.id }
-
-            // Add new reference
-            db!!.refs.add(ref)
-
-            Log.i(TAG, "Added remote ref: ${ref.name} (${ref.owner})")
+            if (db == null) load()
+            val current = db ?: RemoteRefsDB().also { db = it }
+            current.refs.removeAll { it.id == ref.id }
+            current.refs.add(ref)
             save()
-            true
         } catch (e: Exception) {
             Log.e(TAG, "Error adding remote reference", e)
             false
         }
     }
 
-    /**
-     * Get reference by ID
-     */
     suspend fun getRef(id: String): UserOwnershipManager.RemoteFileRef? = withContext(Dispatchers.IO) {
-        val db = db
-        if (db == null) {
-            load()
-        }
-        return@withContext db?.refs?.find { it.id == id }
+        if (db == null) load()
+        db?.refs?.find { it.id == id }
     }
 
-    /**
-     * Get all references by owner
-     */
     suspend fun getRefsByOwner(owner: String): List<UserOwnershipManager.RemoteFileRef> = withContext(Dispatchers.IO) {
-        val db = db
-        if (db == null) {
-            load()
-        }
-        return@withContext db?.refs?.filter { it.owner == owner } ?: emptyList()
+        if (db == null) load()
+        db?.refs?.filter { it.owner == owner } ?: emptyList()
     }
 
-    /**
-     * Get all references
-     */
     suspend fun getAllRefs(): List<UserOwnershipManager.RemoteFileRef> = withContext(Dispatchers.IO) {
-        val db = db
-        if (db == null) {
-            load()
-        }
-        return@withContext db?.refs?.toList() ?: emptyList()
+        if (db == null) load()
+        db?.refs?.toList() ?: emptyList()
     }
 
-    /**
-     * Update reference access state
-     */
+    /** Grant one named user future access in this local reference metadata. */
+    suspend fun grantAccess(
+        id: String,
+        ownerId: String,
+        userId: String,
+        expiresAtMs: Long = 0L
+    ): Boolean = withContext(Dispatchers.IO) {
+        grantMutationMutex.lock()
+        try {
+            val owner = ownerId.trim()
+            val user = userId.trim()
+            if (id.isBlank() || owner.isBlank() || user.isBlank() || user.equals(owner, ignoreCase = true) ||
+                (expiresAtMs > 0L && expiresAtMs <= System.currentTimeMillis())
+            ) return@withContext false
+            if (db == null) load()
+            val refs = db?.refs ?: return@withContext false
+            val index = refs.indexOfFirst { it.id == id && it.owner.equals(owner, ignoreCase = true) }
+            if (index < 0) return@withContext false
+            val ref = refs[index]
+            val grantExpiries = ref.userGrantExpiriesMs.toMutableMap()
+            grantExpiries.keys.filter { it.equals(user, ignoreCase = true) }.forEach(grantExpiries::remove)
+            grantExpiries[user] = expiresAtMs
+            refs[index] = ref.copy(
+                accessState = UserOwnershipManager.AccessState.AVAILABLE,
+                allowedUsers = ref.allowedUsers.filterNot { it.equals(user, ignoreCase = true) },
+                revoked = false,
+                userGrantExpiriesMs = grantExpiries,
+                lastSyncTimestamp = System.currentTimeMillis()
+            )
+            save()
+        } finally {
+            grantMutationMutex.unlock()
+        }
+    }
+
+    /** Revoke future local checks. Previously downloaded copies cannot be recalled. */
+    suspend fun revokeAccess(id: String, ownerId: String, userId: String? = null): Boolean =
+        withContext(Dispatchers.IO) {
+            grantMutationMutex.lock()
+            try {
+                val owner = ownerId.trim()
+                if (id.isBlank() || owner.isBlank()) return@withContext false
+                if (db == null) load()
+                val refs = db?.refs ?: return@withContext false
+                val index = refs.indexOfFirst { it.id == id && it.owner.equals(owner, ignoreCase = true) }
+                if (index < 0) return@withContext false
+                val ref = refs[index]
+                val remainingLegacyUsers = if (userId.isNullOrBlank()) emptyList() else
+                    ref.allowedUsers.filterNot { it.equals(userId.trim(), ignoreCase = true) }
+                val remainingGrants = if (userId.isNullOrBlank()) emptyMap() else
+                    ref.userGrantExpiriesMs.filterNot { it.key.equals(userId.trim(), ignoreCase = true) }
+                if (!userId.isNullOrBlank() && remainingLegacyUsers.size == ref.allowedUsers.size &&
+                    remainingGrants.size == ref.userGrantExpiriesMs.size
+                ) return@withContext false
+
+                val now = System.currentTimeMillis()
+                val liveLegacyUsers = remainingLegacyUsers.filter {
+                    ref.expiresAtMs == 0L || now < ref.expiresAtMs
+                }
+                val liveGrants = remainingGrants.filterValues { expiry -> expiry == 0L || now < expiry }
+                val hasGrants = liveLegacyUsers.isNotEmpty() || liveGrants.isNotEmpty()
+                refs[index] = ref.copy(
+                    accessState = if (hasGrants) UserOwnershipManager.AccessState.AVAILABLE
+                    else UserOwnershipManager.AccessState.LOCKED,
+                    allowedUsers = liveLegacyUsers,
+                    revoked = !hasGrants,
+                    userGrantExpiriesMs = liveGrants,
+                    lastSyncTimestamp = now
+                )
+                save()
+            } finally {
+                grantMutationMutex.unlock()
+            }
+        }
+
+    /** AVAILABLE does not grant access without a named, unexpired recipient grant. */
     suspend fun updateAccessState(
         id: String,
         state: UserOwnershipManager.AccessState
     ): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (db == null) {
-                load()
-            }
-
-            val ref = db?.refs?.find { it.id == id } ?: return@withContext false
-            val index = db!!.refs.indexOf(ref)
-
-            db!!.refs[index] = ref.copy(
+            if (db == null) load()
+            val current = db ?: return@withContext false
+            val index = current.refs.indexOfFirst { it.id == id }
+            if (index < 0) return@withContext false
+            current.refs[index] = current.refs[index].copy(
                 accessState = state,
                 lastSyncTimestamp = System.currentTimeMillis()
             )
-
-            Log.d(TAG, "Updated access state for ${ref.name}: $state")
             save()
-            true
         } catch (e: Exception) {
             Log.e(TAG, "Error updating access state", e)
             false
         }
     }
 
-    /**
-     * Update thumbnail path
-     */
     suspend fun updateThumbnail(id: String, thumbnailPath: String?): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (db == null) {
-                load()
-            }
-
-            val ref = db?.refs?.find { it.id == id } ?: return@withContext false
-            val index = db!!.refs.indexOf(ref)
-
-            db!!.refs[index] = ref.copy(thumbnailPath = thumbnailPath)
-
-            Log.d(TAG, "Updated thumbnail for ${ref.name}")
+            if (db == null) load()
+            val current = db ?: return@withContext false
+            val index = current.refs.indexOfFirst { it.id == id }
+            if (index < 0) return@withContext false
+            current.refs[index] = current.refs[index].copy(thumbnailPath = thumbnailPath)
             save()
-            true
         } catch (e: Exception) {
             Log.e(TAG, "Error updating thumbnail", e)
             false
         }
     }
 
-    /**
-     * Remove reference
-     */
     suspend fun removeRef(id: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            if (db == null) {
-                load()
-            }
-
-            val removed = db?.refs?.removeAll { it.id == id } ?: return@withContext false
-
-            if (removed) {
-                Log.i(TAG, "Removed remote ref: $id")
-                save()
-            }
-
-            true
+            if (db == null) load()
+            val current = db ?: return@withContext false
+            val removed = current.refs.removeAll { it.id == id }
+            if (removed) save() else false
         } catch (e: Exception) {
             Log.e(TAG, "Error removing reference", e)
             false
         }
     }
 
-    /**
-     * Clear all references
-     */
     suspend fun clear(): Boolean = withContext(Dispatchers.IO) {
-        try {
-            if (db == null) {
-                db = RemoteRefsDB()
-            } else {
-                db!!.refs.clear()
-            }
-
-            Log.i(TAG, "Cleared all remote references")
-            save()
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Error clearing references", e)
-            false
-        }
+        db = RemoteRefsDB()
+        save()
     }
 
-    // ─── Search & Filter ───────────────────────────────────────────────────
-
-    /**
-     * Search references by name
-     */
     suspend fun searchByName(query: String): List<UserOwnershipManager.RemoteFileRef> = withContext(Dispatchers.IO) {
-        val db = db
-        if (db == null) {
-            load()
-        }
-
-        return@withContext db?.refs?.filter {
-            it.name.contains(query, ignoreCase = true)
-        } ?: emptyList()
+        if (db == null) load()
+        val needle = query.trim().lowercase()
+        db?.refs?.filter { it.name.lowercase().contains(needle) } ?: emptyList()
     }
 
-    /**
-     * Get references that are locked (require device connection)
-     */
     suspend fun getLockedRefs(): List<UserOwnershipManager.RemoteFileRef> = withContext(Dispatchers.IO) {
-        val db = db
-        if (db == null) {
-            load()
-        }
-
-        return@withContext db?.refs?.filter {
-            it.accessState == UserOwnershipManager.AccessState.LOCKED
-        } ?: emptyList()
+        if (db == null) load()
+        db?.refs?.filter { it.accessState == UserOwnershipManager.AccessState.LOCKED } ?: emptyList()
     }
 
-    /**
-     * Get references that are available
-     */
     suspend fun getAvailableRefs(): List<UserOwnershipManager.RemoteFileRef> = withContext(Dispatchers.IO) {
-        val db = db
-        if (db == null) {
-            load()
-        }
-
-        return@withContext db?.refs?.filter {
-            it.accessState == UserOwnershipManager.AccessState.AVAILABLE
-        } ?: emptyList()
-    }
-
-    /**
-     * Get statistics
-     */
-    suspend fun getStats(): RefStatistics = withContext(Dispatchers.IO) {
-        val db = db
-        if (db == null) {
-            load()
-        }
-
-        val refs = db?.refs ?: emptyList()
-
-        return@withContext RefStatistics(
-            totalRefs = refs.size,
-            totalSize = refs.sumOf { it.size },
-            byOwner = refs.groupingBy { it.owner }.eachCount(),
-            byAccessState = refs.groupingBy { it.accessState }.eachCount(),
-            lockedCount = refs.count { it.accessState == UserOwnershipManager.AccessState.LOCKED },
-            availableCount = refs.count { it.accessState == UserOwnershipManager.AccessState.AVAILABLE }
-        )
+        if (db == null) load()
+        db?.refs?.filter { it.accessState == UserOwnershipManager.AccessState.AVAILABLE } ?: emptyList()
     }
 
     data class RefStatistics(
-        val totalRefs: Int = 0,
-        val totalSize: Long = 0L,
-        val byOwner: Map<String, Int> = emptyMap(),
-        val byAccessState: Map<UserOwnershipManager.AccessState, Int> = emptyMap(),
-        val lockedCount: Int = 0,
-        val availableCount: Int = 0
+        val totalCount: Int,
+        val lockedCount: Int,
+        val availableCount: Int,
+        val totalSize: Long,
+        val byOwner: Map<String, Int>
     )
 
-    // ─── Sync with Backup Index ────────────────────────────────────────────
+    suspend fun getStats(): RefStatistics = withContext(Dispatchers.IO) {
+        if (db == null) load()
+        val refs = db?.refs.orEmpty()
+        RefStatistics(
+            totalCount = refs.size,
+            lockedCount = refs.count { it.accessState == UserOwnershipManager.AccessState.LOCKED },
+            availableCount = refs.count { it.accessState == UserOwnershipManager.AccessState.AVAILABLE },
+            totalSize = refs.sumOf { it.size },
+            byOwner = refs.groupingBy { it.owner }.eachCount()
+        )
+    }
 
-    /**
-     * Sync references with backup index (when backup is available)
-     */
-    suspend fun syncWithBackupIndex(
-        backupIndex: BackupIndexer.BackupIndex
-    ): Int = withContext(Dispatchers.IO) {
+    suspend fun syncWithBackupIndex(backupIndex: BackupIndexer.BackupIndex): Int = withContext(Dispatchers.IO) {
         var synced = 0
-
         try {
             for (indexedFile in backupIndex.files) {
                 val ref = UserOwnershipManager.RemoteFileRef(
@@ -376,17 +300,12 @@ class RemoteFileRefManager(private val storageRoot: String = "/calcvault/storage
                     accessState = UserOwnershipManager.AccessState.AVAILABLE,
                     timestamp = indexedFile.timestamp
                 )
-
-                if (addRef(ref)) {
-                    synced++
-                }
+                if (addRef(ref)) synced++
             }
-
             Log.i(TAG, "Synced $synced references from backup index")
         } catch (e: Exception) {
             Log.e(TAG, "Error syncing with backup index", e)
         }
-
-        return@withContext synced
+        synced
     }
 }

@@ -178,32 +178,9 @@ In the web browser (Companion UI):
 
 ---
 
-## Step 7: Connect via WiFi (Alternative)
+## Step 7: Wi-Fi / direct LAN (Unavailable)
 
-If USB doesn't work or you prefer WiFi:
-
-### 7A: Find Phone IP Address
-
-On your phone:
-1. Settings → About Phone → Status
-2. Look for "IP Address" (e.g., 192.168.1.100)
-
-Or:
-1. Settings → WiFi
-2. Tap connected network
-3. Look for "IP Address"
-
-### 7B: Connect in UI
-
-In the web browser (Companion UI):
-
-1. In the "Local Network (Optional)" section
-2. Enter: `ws://PHONE_IP:37111/bridge`
-   - Replace PHONE_IP with your actual IP (e.g., `ws://192.168.1.100:37111/bridge`)
-3. Click **"Connect Network"**
-4. Wait 2-5 seconds
-
-**Expected:** Status changes to "Connected" ✅
+Direct LAN transfer is disabled because the Android File Sharing privacy choice has no consented direct route connected to this transport. The UI and backend reject this route; no direct fallback is attempted. Use USB/ADB local-only mode.
 
 ---
 

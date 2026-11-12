@@ -175,7 +175,8 @@ class MiniGameManager {
         MiniGameType.FOOD_CATCHER to FoodCatcherGame(),
         MiniGameType.TRAMPOLINE to TrampolineGame()
     )
-    var activeGame: BaseMiniGame? = null; private set
+    var activeGame: BaseMiniGame? = null
+    private set
     private val hudPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 18f; color = Color.WHITE; textAlign = Paint.Align.LEFT }
     private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 

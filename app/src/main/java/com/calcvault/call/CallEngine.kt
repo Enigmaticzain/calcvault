@@ -1,35 +1,32 @@
 package com.calcvault.call
 
 import android.content.Context
+import android.media.AudioManager
+import android.os.SystemClock
 import com.calcvault.messaging.AppendOnlyMessageDB
 import com.calcvault.messaging.CallLogRecord
 import com.calcvault.network.NetworkMessageEngine
+import com.calcvault.network.privacy.ActivePrivacySessionRegistry
+import com.calcvault.network.privacy.PrivacyControlStore
+import com.calcvault.network.privacy.PrivacyFeature
+import com.calcvault.network.privacy.PrivacyMode
+import com.calcvault.network.privacy.SafetyContactStore
+import com.calcvault.network.webrtc.WebRTCManager
+import com.calcvault.network.webrtc.WebRtcIcePolicy
+import com.calcvault.network.webrtc.WebRtcIceSettingsStore
 import com.calcvault.storage.USBStorageEngine
+import com.calcvault.utils.PairedUserIdentity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Job
 import org.json.JSONObject
 import java.util.UUID
 
-/**
- * CallEngine - Stabilized Call Controller
- *
- * Enforces strict call state machine where ALL state transitions are driven by:
- * 1. Real signaling events (call_offer, call_accept, call_reject, call_end)
- * 2. Real transport state changes (socket connection established)
- * 3. Explicit timeouts (no artificial delays)
- *
- * Guarantees:
- * - ACTIVE state ONLY when transport truly confirms connection
- * - No fake/simulated success states
- * - Event-driven transitions only
- * - Strict validation of state changes
- */
+/** Call lifecycle and WebRTC signaling; raw public-IP TCP calling is intentionally not used. */
 class CallEngine(
     private val context: Context,
     private val storageEngine: USBStorageEngine,
@@ -47,7 +44,6 @@ class CallEngine(
     }
 
     enum class CallType { VOICE, VIDEO }
-
     enum class RecordingTarget { MINE, PARTNER, BOTH, NONE }
 
     data class ActiveCall(
@@ -56,411 +52,541 @@ class CallEngine(
         val localUser: String,
         val remoteUser: String,
         val startTime: Long,
-        var state: CallState,
+        val startElapsedRealtimeMs: Long,
+        @Volatile var state: CallState,
+        @Volatile var answerInProgress: Boolean = false,
+        @Volatile var isEnding: Boolean = false,
         var signalingAddress: String = "",
         var isRecording: Boolean = false,
         var recordTarget: RecordingTarget = RecordingTarget.NONE,
         var isMuted: Boolean = false,
         var isSpeakerOn: Boolean = false,
-        var isInitiator: Boolean = true
-    )
+        var isVideoEnabled: Boolean = type == CallType.VIDEO,
+        var isInitiator: Boolean = true,
+        var pendingOfferSdp: String = "",
+        val pendingIceMessages: MutableList<JSONObject> = mutableListOf()
+    ) {
+        val privacySessionId: String get() = "call:$callId"
+    }
 
+    @Volatile
     var currentCall: ActiveCall? = null
         private set
+
+    /** Called after remote acceptance and before creating/capturing any local media. */
+    var onPrepareCallMedia: (() -> Boolean)? = null
 
     var onCallStateChanged: ((CallState) -> Unit)? = null
     var onCallError: ((String) -> Unit)? = null
     var onInboundCall: ((String, String, CallType, String) -> Unit)? = null
+    var onLocalVideoTrack: ((org.webrtc.VideoTrack) -> Unit)? = null
+    var onRemoteVideoTrack: ((org.webrtc.VideoTrack) -> Unit)? = null
+    var onWebRtcManagerCreated: ((WebRTCManager) -> Unit)? = null
+    var onCallRouteDisclosure: ((String) -> Unit)? = null
 
     private val callScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val socketEngine = SocketCallEngine(context).apply {
-        suppressInternalLogging = true
-        onStateChanged = { state -> handleSocketConnectionState(state) }
-        onError = { message -> handleSocketError(message) }
-        onLocalAudioPacket = { packet -> onRecordedAudioPacket(packet, isLocal = true) }
-        onRemoteAudioPacket = { packet -> onRecordedAudioPacket(packet, isLocal = false) }
-    }
-
+    private val lifecycleLock = Any()
+    private val safetyContacts = SafetyContactStore(context)
     private var signalingEngine: NetworkMessageEngine? = null
-    private var recordingJob: Job? = null
+    private var expectedPeerUserId: String? = null
+    private var expectedLocalUserId: String? = null
+    private var webRtcManager: WebRTCManager? = null
     private var timeoutJob: Job? = null
-    private val recordingBuffer = mutableListOf<ByteArray>()
-    private val chunkSizeBytes = 2 * 1024 * 1024
-    private var activeEndReason = "NORMAL"
-    private var isEnding = false
+    private var originalAudioMode: Int? = null
+    private var originalSpeakerState: Boolean? = null
 
     private companion object {
         private const val OFFER_TIMEOUT_MS = 45_000L
-        private const val CONNECT_TIMEOUT_MS = 15_000L
+        private const val CONNECT_TIMEOUT_MS = 30_000L
+        private const val MAX_PENDING_ICE_CANDIDATES = 64
     }
 
-    fun attachSignaling(engine: NetworkMessageEngine) {
+    fun attachSignaling(
+        engine: NetworkMessageEngine,
+        expectedRemoteUserId: String? = null,
+        expectedLocalUserId: String? = null
+    ) {
         signalingEngine = engine
+        this.expectedPeerUserId = PairedUserIdentity.stableId(expectedRemoteUserId)
+        this.expectedLocalUserId = PairedUserIdentity.stableId(expectedLocalUserId)
     }
 
     fun attachSignalHandler() {
-        signalingEngine?.onControlSignalReceived = { json ->
-            handleIncomingSignal(json)
-        }
+        signalingEngine?.onControlSignalReceived = ::handleIncomingSignal
     }
 
+    @Synchronized
     fun startCall(localUser: String, remoteUser: String, type: CallType) {
+        val localPairId = PairedUserIdentity.stableId(localUser)
+        val remotePairId = PairedUserIdentity.stableId(remoteUser)
+        if (localPairId == null || remotePairId == null || localPairId == remotePairId) {
+            onCallError?.invoke("Call was not started: valid, distinct paired-user identities are required")
+            notifyStateChange(CallState.FAILED)
+            return
+        }
+        if (safetyContacts.isBlocked(remotePairId)) {
+            onCallError?.invoke("Call was not started: this contact is blocked")
+            notifyStateChange(CallState.FAILED)
+            return
+        }
         if (currentCall != null) {
             onCallError?.invoke("Already in a call")
             return
         }
-
         val signal = signalingEngine
         if (signal == null) {
             onCallError?.invoke("Call signaling unavailable")
             return
         }
+        signal.privacyRouteUnavailableReason?.let { explanation ->
+            onCallError?.invoke("Call was not started. $explanation")
+            notifyStateChange(CallState.FAILED)
+            return
+        }
 
-        val callId = socketEngine.startCall()
+        val mode = selectedPrivacyMode(type)
+        val route = WebRtcIcePolicy.plan(mode, WebRtcIceSettingsStore.loadOrEmpty(context))
+        if (!route.allowed) {
+            onCallError?.invoke(route.explanation)
+            notifyStateChange(CallState.FAILED)
+            return
+        }
+
         val call = ActiveCall(
-            callId = callId.ifBlank { UUID.randomUUID().toString() },
+            callId = UUID.randomUUID().toString(),
             type = type,
-            localUser = localUser,
-            remoteUser = remoteUser,
+            localUser = localPairId,
+            remoteUser = remotePairId,
             startTime = System.currentTimeMillis(),
+            startElapsedRealtimeMs = SystemClock.elapsedRealtime(),
             state = CallState.IDLE,
-            signalingAddress = socketEngine.getLocalIp(),
             isInitiator = true
         )
-        currentCall = call
-        activeEndReason = "NORMAL"
-
+        synchronized(lifecycleLock) { currentCall = call }
+        registerPrivacySession(call)
         callScope.launch {
-            val sent = signal.sendControlSignal(
-                "call_offer",
-                JSONObject().apply {
-                    put("callId", call.callId)
-                    put("callType", call.type.name)
-                    put("callerIp", call.signalingAddress)
-                    put("callPort", SocketCallEngine.callPort())
+            try {
+                val sent = signal.sendControlSignal(
+                    "call_offer",
+                    JSONObject().put("callId", call.callId).put("callType", type.name)
+                )
+                if (!sent) {
+                    onCallError?.invoke("Call invitation could not be delivered on the selected route. No alternate route was attempted.")
+                    endCallInternal(call, "FAILED", notifyRemote = false)
+                    return@launch
                 }
-            )
-            if (sent) {
-                updateCallState(call, CallState.OUTGOING_RINGING, "Waiting for peer acceptance")
+
+                // Do not create a peer connection or capture microphone/camera before
+                // the remote user accepts the invitation.
+                updateCallState(call, CallState.OUTGOING_RINGING)
                 startTimeout(OFFER_TIMEOUT_MS, "NO_ANSWER")
-            } else {
-                onCallError?.invoke("Unable to notify partner")
-                callScope.launch {
-                    endCallInternal(call, "FAILED", notifyRemote = false, stopSocket = true)
-                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                onCallError?.invoke("Call invitation failed: ${error.message ?: "unknown error"}")
+                endCallInternal(call, "FAILED", notifyRemote = false)
             }
         }
     }
 
+    @Synchronized
     fun answerCall() {
         val call = currentCall ?: return
-        if (call.state != CallState.INCOMING_RINGING) {
-            onCallError?.invoke("Call is not in ringing state")
+        if (!CallNegotiationPolicy.canAnswer(
+                state = call.state,
+                hasOffer = call.pendingOfferSdp.isNotBlank(),
+                answerInProgress = call.answerInProgress
+            )
+        ) {
+            val explanation = when {
+                call.answerInProgress -> "Call acceptance is already being processed."
+                call.state != CallState.INCOMING_RINGING -> "Call is not in ringing state."
+                else -> "Call offer is still arriving. Please try Answer again in a moment."
+            }
+            onCallError?.invoke(explanation)
             return
         }
-        if (call.signalingAddress.isBlank() || call.signalingAddress == "unknown") {
-            onCallError?.invoke("Partner address unavailable")
-            callScope.launch { endCallInternal(call, "FAILED", notifyRemote = false, stopSocket = true) }
+        if (safetyContacts.isBlocked(call.remoteUser)) {
+            onCallError?.invoke("Call not answered: this contact is blocked")
+            callScope.launch { endCallInternal(call, "BLOCKED", notifyRemote = true) }
+            return
+        }
+        call.answerInProgress = true
+        val signal = signalingEngine ?: run {
+            onCallError?.invoke("Call signaling unavailable")
+            callScope.launch { endCallInternal(call, "FAILED", notifyRemote = false) }
+            return
+        }
+        signal.privacyRouteUnavailableReason?.let { explanation ->
+            onCallError?.invoke("Call was not answered. $explanation")
+            callScope.launch { endCallInternal(call, "FAILED", notifyRemote = false) }
+            return
+        }
+        val mode = selectedPrivacyMode(call.type)
+        val route = WebRtcIcePolicy.plan(mode, WebRtcIceSettingsStore.loadOrEmpty(context))
+        if (!route.allowed) {
+            onCallError?.invoke(route.explanation)
+            callScope.launch { endCallInternal(call, "FAILED", notifyRemote = true) }
             return
         }
 
         callScope.launch {
-            val accepted = signalingEngine?.sendControlSignal(
-                "call_accept",
-                JSONObject().apply {
-                    put("callId", call.callId)
-                    put("callType", call.type.name)
+            try {
+                val accepted = signal.sendControlSignal(
+                    "call_accept",
+                    JSONObject().put("callId", call.callId).put("callType", call.type.name)
+                )
+                if (!accepted) {
+                    onCallError?.invoke("Unable to accept call. No alternate route was attempted.")
+                    endCallInternal(call, "FAILED", notifyRemote = false)
+                    return@launch
                 }
-            ) ?: false
-            if (accepted) {
-                updateCallState(call, CallState.CONNECTING, "Establishing connection")
+                if (onPrepareCallMedia?.invoke() != true) {
+                    onCallError?.invoke("Call not answered: the foreground microphone/camera service could not be started. No media was captured.")
+                    endCallInternal(call, "FAILED", notifyRemote = false)
+                    return@launch
+                }
+                if (!isCurrentCall(call)) return@launch
+                updateCallState(call, CallState.CONNECTING)
+                applyCallAudioRouting(call)
                 startTimeout(CONNECT_TIMEOUT_MS, "CONNECTION_TIMEOUT")
-                socketEngine.answerCall(call.signalingAddress)
-            } else {
-                onCallError?.invoke("Unable to accept call")
-                endCallInternal(call, "FAILED", notifyRemote = false, stopSocket = true)
+                val manager = createWebRtcManager(call, mode)
+                if (!manager.answerOffer(call.pendingOfferSdp, withVideo = call.type == CallType.VIDEO)) {
+                    endCallInternal(call, "FAILED", notifyRemote = true)
+                } else {
+                    call.pendingIceMessages.toList().forEach(manager::handleSignal)
+                    call.pendingIceMessages.clear()
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                onCallError?.invoke("Could not prepare the call: ${error.message ?: "unknown error"}")
+                endCallInternal(call, "FAILED", notifyRemote = false)
             }
         }
     }
 
+    @Synchronized
     fun onIncomingCall(
         callId: String,
         fromUser: String,
         type: CallType,
-        callerIp: String = "",
+        @Suppress("UNUSED_PARAMETER") callerIp: String = "",
         localUser: String = ""
     ) {
         if (currentCall != null) return
-
-        currentCall = ActiveCall(
+        val senderPairId = PairedUserIdentity.stableId(fromUser)
+        val localPairId = PairedUserIdentity.stableId(localUser) ?: PairedUserIdentity.USER_A
+        if (callId.isBlank() || senderPairId == null) {
+            onCallError?.invoke("Call invitation ignored: missing call data or an unknown paired-user identity")
+            return
+        }
+        if (safetyContacts.isBlocked(fromUser) || safetyContacts.isBlocked(senderPairId)) {
+            onCallError?.invoke("Call ignored: this contact is blocked")
+            return
+        }
+        val call = ActiveCall(
             callId = callId.ifBlank { UUID.randomUUID().toString() },
             type = type,
-            localUser = localUser,
-            remoteUser = fromUser,
+            localUser = localPairId,
+            remoteUser = senderPairId,
             startTime = System.currentTimeMillis(),
+            startElapsedRealtimeMs = SystemClock.elapsedRealtime(),
             state = CallState.INCOMING_RINGING,
-            signalingAddress = callerIp,
+            signalingAddress = "", // Never accept a caller-supplied IP address.
             isInitiator = false
         )
-        activeEndReason = "NORMAL"
-        updateCallState(currentCall!!, CallState.INCOMING_RINGING, "Incoming call from $fromUser")
+        synchronized(lifecycleLock) { currentCall = call }
+        registerPrivacySession(call)
+        updateCallState(call, CallState.INCOMING_RINGING)
         startTimeout(OFFER_TIMEOUT_MS, "NO_ANSWER")
+        onInboundCall?.invoke(call.callId, fromUser, type, "")
     }
 
-    private fun handleIncomingSignal(json: JSONObject) {
+    @Synchronized
+    fun handleIncomingSignal(json: JSONObject) {
+        val call = currentCall
         when (json.optString("type")) {
             "call_offer" -> {
-                if (currentCall == null) {
-                    val callId = json.optString("callId", UUID.randomUUID().toString())
-                    val fromUser = json.optString("from", "UNKNOWN")
-                    val callType = when (json.optString("callType", "VOICE").uppercase()) {
+                val sender = PairedUserIdentity.stableId(json.optString("from")) ?: return
+                val recipient = PairedUserIdentity.stableId(json.optString("to")) ?: return
+                val incomingCallId = json.optString("callId")
+                if (incomingCallId.isBlank() || safetyContacts.isBlocked(sender) ||
+                    (expectedPeerUserId != null && sender != expectedPeerUserId) ||
+                    (expectedLocalUserId != null && recipient != expectedLocalUserId)
+                ) return
+                if (call == null) {
+                    val incomingType = when (json.optString("callType").uppercase(java.util.Locale.US)) {
+                        "VOICE" -> CallType.VOICE
                         "VIDEO" -> CallType.VIDEO
-                        else -> CallType.VOICE
+                        else -> return
                     }
-                    val callerIp = json.optString("callerIp", "")
-                    onIncomingCall(callId, fromUser, callType, callerIp)
+                    onIncomingCall(
+                        callId = incomingCallId,
+                        fromUser = sender,
+                        type = incomingType,
+                        localUser = recipient
+                    )
+                }
+            }
+            "call_accept" -> if (call != null && isMatchingCall(json, call)) onRemoteCallAccepted(json.optString("callId"))
+            "call_reject" -> if (call != null && isMatchingCall(json, call)) {
+                onRemoteCallRejected(json.optString("callId"), json.optString("reason", "DECLINED"))
+            }
+            "call_end" -> if (call != null && isMatchingCall(json, call)) {
+                onRemoteCallEnded(json.optString("callId"), json.optString("reason", "REMOTE_ENDED"))
+            }
+            "webrtc_offer" -> {
+                if (call != null && isMatchingCall(json, call)) {
+                    if (call.state == CallState.INCOMING_RINGING) {
+                        call.pendingOfferSdp = json.optString("sdp")
+                    } else {
+                        webRtcManager?.handleSignal(json)
+                    }
+                }
+            }
+            "webrtc_answer", "webrtc_ice", "webrtc_bye" -> {
+                if (call != null && isMatchingCall(json, call)) {
+                    val manager = webRtcManager
+                    if (manager != null) {
+                        manager.handleSignal(json)
+                    } else if (json.optString("type") == "webrtc_ice" &&
+                        call.pendingIceMessages.size < MAX_PENDING_ICE_CANDIDATES
+                    ) {
+                        call.pendingIceMessages += JSONObject(json.toString())
+                    }
                 }
             }
         }
     }
 
+    @Synchronized
     fun onRemoteCallAccepted(callId: String?) {
         val call = currentCall ?: return
-        if (callId != null && callId.isNotBlank() && call.callId != callId) return
-        if (call.state != CallState.OUTGOING_RINGING) return
-
+        if (!matchesCallId(callId, call) || call.state != CallState.OUTGOING_RINGING) return
+        if (safetyContacts.isBlocked(call.remoteUser)) {
+            onCallError?.invoke("Call ended: this contact was blocked before media setup")
+            callScope.launch { endCallInternal(call, "PRIVACY_REVOKED", notifyRemote = false) }
+            return
+        }
         timeoutJob?.cancel()
-        updateCallState(call, CallState.CONNECTING, "Peer accepted, establishing connection")
-        startTimeout(CONNECT_TIMEOUT_MS, "CONNECTION_TIMEOUT")
+        updateCallState(call, CallState.CONNECTING)
+        val mode = selectedPrivacyMode(call.type)
+        callScope.launch {
+            try {
+                if (currentCall?.callId != call.callId) return@launch
+                if (onPrepareCallMedia?.invoke() != true) {
+                    onCallError?.invoke("Call not started: the foreground microphone/camera service could not be started. No media was captured.")
+                    endCallInternal(call, "FAILED", notifyRemote = false)
+                    return@launch
+                }
+                if (!isCurrentCall(call)) return@launch
+                applyCallAudioRouting(call)
+                startTimeout(CONNECT_TIMEOUT_MS, "CONNECTION_TIMEOUT")
+                val manager = createWebRtcManager(call, mode)
+                if (!manager.createOffer(withVideo = call.type == CallType.VIDEO)) {
+                    endCallInternal(call, "FAILED", notifyRemote = true)
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                onCallError?.invoke("Could not prepare the call: ${error.message ?: "unknown error"}")
+                endCallInternal(call, "FAILED", notifyRemote = false)
+            }
+        }
     }
 
     fun onRemoteCallRejected(callId: String?, reason: String = "DECLINED") {
         val call = currentCall ?: return
-        if (callId != null && callId.isNotBlank() && call.callId != callId) return
-
+        if (!matchesCallId(callId, call)) return
         onCallError?.invoke("Call declined by partner")
-        activeEndReason = reason
-        callScope.launch { endCallInternal(call, reason, notifyRemote = false, stopSocket = true) }
+        callScope.launch { endCallInternal(call, reason, notifyRemote = false) }
     }
 
     fun onRemoteCallEnded(callId: String?, reason: String = "REMOTE_ENDED") {
         val call = currentCall ?: return
-        if (callId != null && callId.isNotBlank() && call.callId != callId) return
-
-        onCallError?.invoke("Call ended by partner")
-        activeEndReason = reason
-        callScope.launch { endCallInternal(call, reason, notifyRemote = false, stopSocket = true) }
+        if (!matchesCallId(callId, call)) return
+        callScope.launch { endCallInternal(call, reason, notifyRemote = false) }
     }
 
     fun endCall() {
         val call = currentCall ?: return
-        callScope.launch { endCallInternal(call, "NORMAL", notifyRemote = true, stopSocket = true) }
+        callScope.launch { endCallInternal(call, "NORMAL", notifyRemote = true) }
     }
 
     fun declineCall() {
         val call = currentCall ?: return
-        callScope.launch {
-            signalingEngine?.sendControlSignal(
-                "call_reject",
-                JSONObject().apply {
-                    put("callId", call.callId)
-                    put("reason", "DECLINED")
-                }
-            )
-            endCallInternal(call, "DECLINED", notifyRemote = false, stopSocket = true)
-        }
+        callScope.launch { endCallInternal(call, "DECLINED", notifyRemote = true) }
     }
 
     fun toggleMute() {
         val call = currentCall ?: return
         call.isMuted = !call.isMuted
-        socketEngine.toggleMute()
+        webRtcManager?.setAudioEnabled(!call.isMuted)
     }
 
     fun toggleSpeaker() {
         val call = currentCall ?: return
         call.isSpeakerOn = !call.isSpeakerOn
-        socketEngine.toggleSpeaker(call.isSpeakerOn)
+        applyCallAudioRouting(call)
     }
 
+    @Suppress("DEPRECATION")
+    private fun applyCallAudioRouting(call: ActiveCall) {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        if (originalAudioMode == null) originalAudioMode = audioManager.mode
+        if (originalSpeakerState == null) originalSpeakerState = audioManager.isSpeakerphoneOn
+        runCatching {
+            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            audioManager.isSpeakerphoneOn = call.isSpeakerOn
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun restoreAudioRouting() {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        runCatching {
+            originalSpeakerState?.let { speaker -> audioManager.isSpeakerphoneOn = speaker }
+            originalAudioMode?.let { audioManager.mode = it }
+        }
+        originalAudioMode = null
+        originalSpeakerState = null
+    }
+
+    @Synchronized
+    fun toggleVideo(): Boolean? {
+        val call = currentCall ?: return null
+        if (call.type != CallType.VIDEO) return null
+        val manager = webRtcManager ?: return null
+        val nextEnabled = CallNegotiationPolicy.nextVideoEnabled(call.isVideoEnabled)
+        if (!manager.setVideoEnabled(nextEnabled)) return null
+        call.isVideoEnabled = nextEnabled
+        return nextEnabled
+    }
+
+    /** Recording is disabled until an explicit, consented WebRTC recording pipeline exists. */
     fun startRecording(target: RecordingTarget) {
-        val call = currentCall ?: return
-        if (call.state != CallState.ACTIVE) return
-        call.isRecording = true
-        call.recordTarget = target
-        startRecordingPipeline(call)
+        onCallError?.invoke("Call recording is disabled until its consent and encrypted-storage flow is implemented")
     }
 
     fun stopRecording() {
-        val call = currentCall ?: return
-        call.isRecording = false
-        recordingJob?.cancel()
-        flushRecordingBuffer(call.callId)
+        currentCall?.isRecording = false
     }
 
-    private fun startRecordingPipeline(call: ActiveCall) {
-        recordingJob?.cancel()
-        recordingJob = callScope.launch {
-            while (isActive && currentCall?.callId == call.callId && call.isRecording) {
-                delay(30_000)
-                flushRecordingBuffer(call.callId)
+    private fun createWebRtcManager(call: ActiveCall, mode: PrivacyMode): WebRTCManager {
+        val previous = synchronized(lifecycleLock) {
+            webRtcManager.also { webRtcManager = null }
+        }
+        previous?.disconnect()
+        if (!isCurrentCall(call)) throw IllegalStateException("Call ended before media setup")
+        val manager = WebRTCManager(
+            context = context,
+            signaling = signalingEngine ?: throw IllegalStateException("Call signaling unavailable"),
+            localUserId = call.localUser,
+            remoteUserId = call.remoteUser,
+            callId = call.callId,
+            privacyMode = mode,
+            iceCredentials = WebRtcIceSettingsStore.loadOrEmpty(context)
+        )
+        manager.onLocalVideoTrack = { onLocalVideoTrack?.invoke(it) }
+        manager.onRemoteVideoTrack = { onRemoteVideoTrack?.invoke(it) }
+        manager.onRouteDisclosure = { disclosure -> onCallRouteDisclosure?.invoke(disclosure) }
+        manager.onError = { error ->
+            onCallError?.invoke(error)
+            if (manager.state == WebRTCManager.State.FAILED) {
+                callScope.launch { endCallInternal(call, "FAILED", notifyRemote = false) }
             }
         }
-    }
-
-    private fun onRecordedAudioPacket(encryptedPacket: ByteArray, isLocal: Boolean) {
-        val call = currentCall ?: return
-        if (!call.isRecording || call.state != CallState.ACTIVE) return
-
-        val shouldStore = when (call.recordTarget) {
-            RecordingTarget.NONE -> false
-            RecordingTarget.BOTH -> true
-            RecordingTarget.MINE -> isLocal
-            RecordingTarget.PARTNER -> !isLocal
-        }
-        if (!shouldStore) return
-        addToRecordingBuffer(call.callId, encryptedPacket.copyOf())
-    }
-
-    private fun addToRecordingBuffer(callId: String, chunk: ByteArray) {
-        synchronized(recordingBuffer) {
-            recordingBuffer.add(chunk)
-            val totalSize = recordingBuffer.sumOf { it.size }
-            if (totalSize >= chunkSizeBytes) {
-                flushRecordingBuffer(callId)
+        manager.onConnectionStateChange = { state, detail ->
+            when (state) {
+                WebRTCManager.State.CONNECTED -> {
+                    timeoutJob?.cancel()
+                    if (currentCall?.callId == call.callId && CallNegotiationPolicy.mayEnterActive(call.state)) {
+                        updateCallState(call, CallState.ACTIVE)
+                    }
+                }
+                WebRTCManager.State.RECONNECTING -> {
+                    if (currentCall?.callId == call.callId) updateCallState(call, CallState.ON_HOLD)
+                    onCallError?.invoke(detail)
+                }
+                WebRTCManager.State.FAILED,
+                WebRTCManager.State.DISCONNECTED -> {
+                    if (currentCall?.callId == call.callId && !call.isEnding) {
+                        callScope.launch { endCallInternal(call, "FAILED", notifyRemote = false) }
+                    }
+                }
+                else -> Unit
             }
         }
+        val installed = synchronized(lifecycleLock) {
+            if (currentCall?.callId == call.callId && !call.isEnding) {
+                webRtcManager = manager
+                true
+            } else {
+                false
+            }
+        }
+        if (!installed) {
+            manager.disconnect()
+            throw IllegalStateException("Call ended before media setup completed")
+        }
+        onWebRtcManagerCreated?.invoke(manager)
+        return manager
     }
 
-    private fun flushRecordingBuffer(callId: String) {
-        callScope.launch {
-            val chunks: List<ByteArray>
-            synchronized(recordingBuffer) {
-                if (recordingBuffer.isEmpty()) return@launch
-                chunks = recordingBuffer.toList()
-                recordingBuffer.clear()
-            }
-
-            val combined = chunks.fold(ByteArray(0)) { acc, next -> acc + next }
-            val mediaId = callId.hashCode().toLong()
-            storageEngine.writeMediaChunk(mediaId, System.currentTimeMillis().toInt(), combined)
-        }
+    private fun selectedPrivacyMode(type: CallType): PrivacyMode {
+        val feature = if (type == CallType.VIDEO) PrivacyFeature.VIDEO_CALLS else PrivacyFeature.AUDIO_CALLS
+        return PrivacyControlStore(context).mode(feature)
     }
 
     private fun startTimeout(durationMs: Long, reason: String) {
         timeoutJob?.cancel()
         timeoutJob = callScope.launch {
             delay(durationMs)
-            currentCall?.let { call ->
-                val errorMsg = when (reason) {
-                    "NO_ANSWER" -> "No answer from partner."
-                    "CONNECTION_TIMEOUT" -> "Connection timed out."
-                    else -> "Call failed."
-                }
-                onCallError?.invoke(errorMsg)
-                endCallInternal(call, reason, notifyRemote = true, stopSocket = true)
-            }
-        }
-    }
-
-    /**
-     * Handle socket connection state changes.
-     * Maps SocketCallEngine's ConnectionState to CallEngine's CallState.
-     *
-     * CRITICAL: ACTIVE state only set when socket reports CONNECTED.
-     */
-    private fun handleSocketConnectionState(state: SocketCallEngine.ConnectionState) {
-        val call = currentCall ?: return
-
-        when (state) {
-            SocketCallEngine.ConnectionState.INIT -> {
-                // Socket initialized, no action needed
-            }
-            SocketCallEngine.ConnectionState.CONNECTING -> {
-                // Socket connection attempt in progress
-                // Call should already be in CONNECTING state from answerCall() or OUTGOING_RINGING from startCall()
-            }
-            SocketCallEngine.ConnectionState.CONNECTED -> {
-                // REAL TRANSPORT CONFIRMED - Socket is fully established and bidirectional
-                timeoutJob?.cancel()
-                if (call.state != CallState.ACTIVE) {
-                    if (call.state == CallState.CONNECTING || call.state == CallState.OUTGOING_RINGING) {
-                        updateCallState(call, CallState.ACTIVE, "Transport connected")
-                    } else {
-                        updateCallState(call, CallState.ACTIVE, "Transport connected (unexpected state: ${call.state})")
-                    }
-                }
-            }
-            SocketCallEngine.ConnectionState.DISCONNECTED -> {
-                // Socket closed cleanly
-                if (!isEnding) {
-                    callScope.launch {
-                        endCallInternal(call, activeEndReason, notifyRemote = false, stopSocket = false)
-                    }
-                }
-            }
-            SocketCallEngine.ConnectionState.FAILED -> {
-                // Socket connection failed
-                if (!isEnding) {
-                    callScope.launch {
-                        endCallInternal(call, "FAILED", notifyRemote = false, stopSocket = false)
-                    }
-                }
-            }
-        }
-    }
-
-    private fun handleSocketError(message: String) {
-        onCallError?.invoke(message)
-        val call = currentCall ?: return
-        activeEndReason = "FAILED"
-        if (!isEnding) {
-            callScope.launch {
-                endCallInternal(call, "FAILED", notifyRemote = false, stopSocket = true)
-            }
-        }
-    }
-
-    private fun updateCallState(call: ActiveCall, newState: CallState, reason: String = "") {
-        call.state = newState
-        notifyStateChange(newState)
-    }
-
-    private suspend fun endCallInternal(
-        call: ActiveCall,
-        reason: String,
-        notifyRemote: Boolean,
-        stopSocket: Boolean
-    ) {
-        if (currentCall?.callId != call.callId || isEnding) return
-        isEnding = true
-        timeoutJob?.cancel()
-
-        activeEndReason = reason
-        val isFailure = reason in listOf("FAILED", "NO_ANSWER", "CONNECTION_TIMEOUT", "DECLINED")
-        call.state = if (isFailure) CallState.FAILED else CallState.ENDED
-
-        if (notifyRemote) {
-            signalingEngine?.sendControlSignal(
-                if (reason == "DECLINED") "call_reject" else "call_end",
-                JSONObject().apply {
-                    put("callId", call.callId)
-                    put("reason", reason)
-                }
+            val call = currentCall ?: return@launch
+            if (reason == "NO_ANSWER" && call.state != CallState.INCOMING_RINGING &&
+                call.state != CallState.OUTGOING_RINGING
+            ) return@launch
+            onCallError?.invoke(
+                if (reason == "NO_ANSWER") "No answer from partner." else "WebRTC connection timed out on the selected route."
             )
+            endCallInternal(call, reason, notifyRemote = true)
         }
+    }
 
-        recordingJob?.cancel()
-        if (call.isRecording) {
-            flushRecordingBuffer(call.callId)
+    private suspend fun endCallInternal(call: ActiveCall, reason: String, notifyRemote: Boolean) {
+        var managerToClose: WebRTCManager? = null
+        val claimed = synchronized(lifecycleLock) {
+            if (currentCall?.callId != call.callId || call.isEnding) false
+            else {
+                call.isEnding = true
+                managerToClose = webRtcManager
+                webRtcManager = null
+                true
+            }
         }
-
-        if (stopSocket && socketEngine.connectionState != SocketCallEngine.ConnectionState.DISCONNECTED) {
-            socketEngine.endCall()
+        if (!claimed) return
+        timeoutJob?.cancel()
+        val signal = signalingEngine
+        if (notifyRemote && signal != null) {
+            runCatching {
+                signal.sendControlSignal(
+                    if (reason == "DECLINED" || reason == "BLOCKED") "call_reject" else "call_end",
+                    JSONObject()
+                        .put("callId", call.callId)
+                        .put("callType", call.type.name)
+                        .put("reason", reason)
+                )
+            }
         }
-
-        val duration = System.currentTimeMillis() - call.startTime
-        try {
+        managerToClose?.disconnect()
+        restoreAudioRouting()
+        val isFailure = reason in listOf(
+            "FAILED", "NO_ANSWER", "CONNECTION_TIMEOUT", "DECLINED", "PRIVACY_REVOKED", "BLOCKED"
+        )
+        call.state = if (isFailure) CallState.FAILED else CallState.ENDED
+        val duration = (SystemClock.elapsedRealtime() - call.startElapsedRealtimeMs).coerceAtLeast(0L)
+        runCatching {
             messageDB.saveCallLog(
                 CallLogRecord(
                     callId = call.callId,
@@ -472,22 +598,98 @@ class CallEngine(
                     ended = reason
                 )
             )
-        } catch (_: Exception) {
         }
-
-        currentCall = null
-        notifyStateChange(CallState.ENDED)
-        isEnding = false
+        synchronized(lifecycleLock) {
+            if (currentCall?.callId == call.callId) currentCall = null
+        }
+        ActivePrivacySessionRegistry.unregister(call.privacySessionId)
+        notifyStateChange(call.state)
     }
 
-    fun destroy() {
-        if (currentCall != null) {
-            callScope.launch { currentCall?.let { endCallInternal(it, "ENDED", notifyRemote = false, stopSocket = true) } }
+    private fun registerPrivacySession(call: ActiveCall) {
+        val id = call.privacySessionId
+        synchronized(lifecycleLock) {
+            if (currentCall?.callId != call.callId || call.isEnding) return
+            ActivePrivacySessionRegistry.register(
+                id = id,
+                peerId = call.remoteUser,
+                feature = if (call.type == CallType.VIDEO) {
+                    PrivacyFeature.VIDEO_CALLS.label
+                } else {
+                    PrivacyFeature.AUDIO_CALLS.label
+                }
+            ) {
+                callScope.launch {
+                    currentCall?.takeIf { it.callId == call.callId }?.let {
+                        endCallInternal(it, "PRIVACY_REVOKED", notifyRemote = true)
+                    }
+                }
+            }
         }
-        callScope.cancel()
     }
+
+    private fun updateCallState(call: ActiveCall, newState: CallState) {
+        val updated = synchronized(lifecycleLock) {
+            if (currentCall?.callId != call.callId || call.isEnding) false
+            else {
+                call.state = newState
+                true
+            }
+        }
+        if (updated) notifyStateChange(newState)
+    }
+
+    private fun isCurrentCall(call: ActiveCall): Boolean = synchronized(lifecycleLock) {
+        currentCall?.callId == call.callId && !call.isEnding
+    }
+
+    private fun isMatchingCall(json: JSONObject, call: ActiveCall): Boolean =
+        CallNegotiationPolicy.matchesSignal(
+            expectedCallId = call.callId,
+            incomingCallId = json.optString("callId"),
+            expectedPeerId = call.remoteUser,
+            senderId = PairedUserIdentity.stableId(json.optString("from")).orEmpty(),
+            expectedLocalUserId = call.localUser,
+            recipientId = PairedUserIdentity.stableId(json.optString("to"))
+        )
+
+    private fun matchesCallId(callId: String?, call: ActiveCall): Boolean =
+        callId != null && CallNegotiationPolicy.matchesSignal(
+            expectedCallId = call.callId,
+            incomingCallId = callId,
+            expectedPeerId = call.remoteUser,
+            senderId = call.remoteUser
+        )
 
     private fun notifyStateChange(state: CallState) {
         callScope.launch(Dispatchers.Main) { onCallStateChanged?.invoke(state) }
+    }
+
+    @Synchronized
+    fun destroy() {
+        timeoutJob?.cancel()
+        val resources = synchronized(lifecycleLock) {
+            val call = currentCall
+            call?.isEnding = true
+            currentCall = null
+            call to webRtcManager.also { webRtcManager = null }
+        }
+        ActivePrivacySessionRegistry.unregister(resources.first?.privacySessionId)
+        val manager = resources.second
+        manager?.onConnectionStateChange = null
+        manager?.onRemoteAudioTrack = null
+        manager?.onRemoteVideoTrack = null
+        manager?.onLocalVideoTrack = null
+        manager?.disconnect()
+        restoreAudioRouting()
+        onPrepareCallMedia = null
+        onCallStateChanged = null
+        onCallError = null
+        onInboundCall = null
+        onLocalVideoTrack = null
+        onRemoteVideoTrack = null
+        onWebRtcManagerCreated = null
+        onCallRouteDisclosure = null
+        callScope.cancel()
     }
 }

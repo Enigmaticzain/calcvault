@@ -4,10 +4,18 @@ import android.content.Context
 import android.content.Intent
 import android.media.projection.MediaProjection
 import com.calcvault.network.NetworkMessageEngine
+import com.calcvault.network.privacy.PrivacyMode
+import com.calcvault.network.webrtc.AdaptiveBitrateController
+import com.calcvault.network.webrtc.CandidateBufferDisposition
+import com.calcvault.network.webrtc.DescriptionOrderedCandidateBuffer
+import com.calcvault.network.webrtc.IceServerCredentials
+import com.calcvault.network.webrtc.WebRtcIcePolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.webrtc.AudioSource
@@ -22,6 +30,9 @@ import org.webrtc.MediaStream
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory
 import org.webrtc.RtpReceiver
+import org.webrtc.RtpSender
+import org.webrtc.StatsObserver
+import org.webrtc.StatsReport
 import org.webrtc.ScreenCapturerAndroid
 import org.webrtc.SdpObserver
 import org.webrtc.SessionDescription
@@ -32,20 +43,37 @@ import org.webrtc.VideoTrack
 class ScreenShareEngine(
     private val context: Context,
     private val networkEngine: NetworkMessageEngine,
-    private val eglBaseContext: EglBase.Context
+    private val eglBaseContext: EglBase.Context,
+    private val privacyMode: PrivacyMode,
+    private val iceCredentials: IceServerCredentials
 ) {
     companion object {
         private const val VIDEO_TRACK_ID = "screenTrack"
         private const val AUDIO_TRACK_ID = "screenAudioTrack"
         private const val STREAM_ID = "liveAssistStream"
+        private const val MAX_ICE_RECOVERY_ATTEMPTS = 4
+        private const val STATS_SAMPLE_INTERVAL_MS = 3_000L
+        private const val MAX_PENDING_ICE_CANDIDATES = 64
+        private const val MAX_SIGNAL_QUEUE = 128
+        private const val MAX_SDP_CHARS = 1_000_000
+        private const val MAX_ICE_CANDIDATE_CHARS = 4_096
+        private val RECOVERY_BACKOFF_MS = listOf(1_000L, 2_000L, 4_000L, 8_000L)
     }
 
+    private data class OutgoingSignal(val type: String, val payload: JSONObject)
+
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val outgoingSignals = Channel<OutgoingSignal>(MAX_SIGNAL_QUEUE)
+    private val signalEnqueueLock = Any()
+    private val localCandidateBuffer = DescriptionOrderedCandidateBuffer<JSONObject>(MAX_PENDING_ICE_CANDIDATES)
+    private val remoteCandidateBuffer = DescriptionOrderedCandidateBuffer<IceCandidate>(MAX_PENDING_ICE_CANDIDATES)
     private val peerConnectionFactory: PeerConnectionFactory
 
     private var peerConnection: PeerConnection? = null
     private var localVideoTrack: VideoTrack? = null
     private var localAudioTrack: AudioTrack? = null
+    private var localVideoSender: RtpSender? = null
+    private var statsJob: kotlinx.coroutines.Job? = null
     private var videoSource: VideoSource? = null
     private var audioSource: AudioSource? = null
     private var capturer: ScreenCapturerAndroid? = null
@@ -54,6 +82,8 @@ class ScreenShareEngine(
     private var partnerId: String = ""
     private var isSharer = false
     private var didCleanup = false
+    private var recoveryAttempts = 0
+    private var recoveryJob: kotlinx.coroutines.Job? = null
 
     var onRemoteStream: ((VideoTrack, AudioTrack?) -> Unit)? = null
     var onLocalTrackReady: ((VideoTrack) -> Unit)? = null
@@ -74,6 +104,18 @@ class ScreenShareEngine(
             .setOptions(PeerConnectionFactory.Options())
             .createPeerConnectionFactory()
 
+        engineScope.launch {
+            for (signal in outgoingSignals) {
+                val sent = runCatching {
+                    networkEngine.sendControlSignal(signal.type, signal.payload)
+                }.getOrDefault(false)
+                if (!sent) {
+                    onError?.invoke("Screen-sharing signaling failed for ${signal.type}; no alternate route was attempted")
+                    endSession(notifyPeer = false)
+                    break
+                }
+            }
+        }
         networkEngine.onControlSignalReceived = ::handleSignalingMessage
     }
 
@@ -82,7 +124,10 @@ class ScreenShareEngine(
         this.sessionId = sessionId
         this.isSharer = true
         this.didCleanup = false
+        recoveryAttempts = 0
+        remoteCandidateBuffer.beginDescription()
         peerConnection = createPeerConnection()
+        if (peerConnection == null) return
 
         audioSource = peerConnectionFactory.createAudioSource(MediaConstraints())
         localAudioTrack = peerConnectionFactory.createAudioTrack(AUDIO_TRACK_ID, audioSource)
@@ -103,9 +148,11 @@ class ScreenShareEngine(
         onLocalTrackReady?.invoke(localVideoTrack!!)
 
         localAudioTrack?.let { peerConnection?.addTrack(it, listOf(STREAM_ID)) }
-        localVideoTrack?.let { peerConnection?.addTrack(it, listOf(STREAM_ID)) }
+        localVideoSender = localVideoTrack?.let { peerConnection?.addTrack(it, listOf(STREAM_ID)) }
 
         capturer?.startCapture(1280, 720, 30)
+        startAdaptiveBitrateSampling()
+        beginLocalNegotiation()
         peerConnection?.createOffer(sdpObserver, MediaConstraints())
     }
 
@@ -114,6 +161,8 @@ class ScreenShareEngine(
         this.sessionId = sessionId
         this.isSharer = false
         this.didCleanup = false
+        recoveryAttempts = 0
+        remoteCandidateBuffer.beginDescription()
         peerConnection = createPeerConnection()
     }
 
@@ -134,6 +183,8 @@ class ScreenShareEngine(
     fun endSession(notifyPeer: Boolean = true) {
         if (didCleanup) return
         didCleanup = true
+        recoveryJob?.cancel()
+        recoveryJob = null
         if (notifyPeer) {
             sendSignal("screenshare_stop")
         }
@@ -141,24 +192,36 @@ class ScreenShareEngine(
     }
 
     private fun createPeerConnection(): PeerConnection? {
-        val config = PeerConnection.RTCConfiguration(
-            listOf(
-                PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer()
-            )
-        )
+        val route = WebRtcIcePolicy.plan(privacyMode, iceCredentials)
+        if (!route.allowed) {
+            onError?.invoke(route.explanation)
+            return null
+        }
+        val iceServers = buildList {
+            route.stunUrls.forEach { add(PeerConnection.IceServer.builder(it).createIceServer()) }
+            route.turnUrls.forEach {
+                add(
+                    PeerConnection.IceServer.builder(it)
+                        .setUsername(iceCredentials.turnUsername)
+                        .setPassword(iceCredentials.turnPassword)
+                        .createIceServer()
+                )
+            }
+        }
+        val config = PeerConnection.RTCConfiguration(iceServers).apply {
+            iceTransportPolicy = if (route.relayOnly) {
+                PeerConnection.IceTransportPolicy.RELAY
+            } else {
+                PeerConnection.IceTransportPolicy.ALL
+            }
+        }
         return peerConnectionFactory.createPeerConnection(config, peerConnectionObserver)
     }
 
     private val peerConnectionObserver = object : PeerConnection.Observer {
         override fun onIceCandidate(candidate: IceCandidate?) {
             if (candidate == null) return
-            val json = JSONObject().apply {
-                put("sessionId", sessionId)
-                put("sdp", candidate.sdp)
-                put("sdpMLineIndex", candidate.sdpMLineIndex)
-                put("sdpMid", candidate.sdpMid)
-            }
-            sendSignal("screenshare_ice", json)
+            queueLocalCandidate(candidate)
         }
 
         override fun onAddStream(stream: MediaStream?) {
@@ -168,11 +231,16 @@ class ScreenShareEngine(
         }
 
         override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {
-            if (state == PeerConnection.IceConnectionState.FAILED ||
-                state == PeerConnection.IceConnectionState.DISCONNECTED ||
-                state == PeerConnection.IceConnectionState.CLOSED
-            ) {
-                endSession(notifyPeer = false)
+            when (state) {
+                PeerConnection.IceConnectionState.CONNECTED,
+                PeerConnection.IceConnectionState.COMPLETED -> {
+                    recoveryAttempts = 0
+                    recoveryJob?.cancel()
+                }
+                PeerConnection.IceConnectionState.DISCONNECTED,
+                PeerConnection.IceConnectionState.FAILED -> scheduleIceRecovery()
+                PeerConnection.IceConnectionState.CLOSED -> endSession(notifyPeer = false)
+                else -> Unit
             }
         }
 
@@ -186,22 +254,104 @@ class ScreenShareEngine(
         override fun onAddTrack(p0: RtpReceiver?, p1: Array<out MediaStream>?) {}
     }
 
+    private fun startAdaptiveBitrateSampling() {
+        statsJob?.cancel()
+        statsJob = engineScope.launch {
+            while (isActive && !didCleanup && isSharer) {
+                sampleAndApplyBitrate()
+                kotlinx.coroutines.delay(STATS_SAMPLE_INTERVAL_MS)
+            }
+        }
+    }
+
+    private fun sampleAndApplyBitrate() {
+        val connection = peerConnection ?: return
+        connection.getStats(object : StatsObserver {
+            override fun onComplete(reports: Array<StatsReport>) {
+                val reportValues = reports.flatMap { it.values.asList() }
+                fun metric(name: String): Double? = reportValues
+                    .firstOrNull { it.name == name }
+                    ?.value
+                    ?.toString()
+                    ?.toDoubleOrNull()
+                    ?.takeIf { it.isFinite() }
+
+                val availableBps = metric("availableOutgoingBitrate")?.toLong()
+                val rttMs = metric("currentRoundTripTime")?.let { (it * 1_000.0).toLong() }
+                val sent = metric("packetsSent")?.toLong()
+                val lost = metric("packetsLost")?.toLong()
+                val lossFraction = if (sent != null && lost != null && sent + lost > 0L) {
+                    lost.toDouble() / (sent + lost).toDouble()
+                } else {
+                    null
+                }
+                val target = AdaptiveBitrateController.targetVideoBitrateBps(
+                    availableOutgoingBitrateBps = availableBps,
+                    roundTripTimeMs = rttMs,
+                    packetLossFraction = lossFraction
+                )
+                applyVideoBitrate(target)
+            }
+        })
+    }
+
+    private fun applyVideoBitrate(targetBps: Int) {
+        val sender = localVideoSender ?: return
+        runCatching {
+            val parameters = sender.parameters
+            parameters.encodings.forEach { it.maxBitrateBps = targetBps }
+            if (!sender.setParameters(parameters)) {
+                onError?.invoke("WebRTC rejected adaptive bitrate update")
+            }
+        }.onFailure { error -> onError?.invoke("Could not adapt video bitrate: ${error.message}") }
+    }
+
+    private fun scheduleIceRecovery() {
+        if (didCleanup || recoveryJob?.isActive == true) return
+        if (recoveryAttempts >= MAX_ICE_RECOVERY_ATTEMPTS) {
+            onError?.invoke("Screen-share reconnection failed on the selected privacy route; no direct fallback was attempted.")
+            endSession(notifyPeer = false)
+            return
+        }
+        val attempt = recoveryAttempts++
+        recoveryJob = engineScope.launch {
+            kotlinx.coroutines.delay(RECOVERY_BACKOFF_MS[attempt])
+            if (didCleanup) return@launch
+            val constraints = MediaConstraints().apply {
+                mandatory.add(MediaConstraints.KeyValuePair("IceRestart", "true"))
+            }
+            remoteCandidateBuffer.beginDescription()
+            beginLocalNegotiation()
+            peerConnection?.createOffer(sdpObserver, constraints)
+        }
+    }
+
     private val sdpObserver = object : SdpObserver {
         override fun onCreateSuccess(sdp: SessionDescription?) {
             if (sdp == null) return
-            peerConnection?.setLocalDescription(this, sdp)
-            val signalType = if (sdp.type == SessionDescription.Type.OFFER) {
-                "screenshare_offer"
-            } else {
-                "screenshare_answer"
-            }
-            sendSignal(
-                signalType,
-                JSONObject().apply {
-                    put("sessionId", sessionId)
-                    put("sdp", sdp.description)
+            peerConnection?.setLocalDescription(object : SdpObserver {
+                override fun onCreateSuccess(p0: SessionDescription?) {}
+                override fun onSetSuccess() {
+                    val signalType = if (sdp.type == SessionDescription.Type.OFFER) {
+                        "screenshare_offer"
+                    } else {
+                        "screenshare_answer"
+                    }
+                    enqueueDescription(
+                        signalType,
+                        JSONObject().apply {
+                            put("sessionId", sessionId)
+                            put("sdp", sdp.description)
+                        }
+                    )
                 }
-            )
+                override fun onCreateFailure(message: String?) {
+                    onError?.invoke(message ?: "Failed to set local SDP")
+                }
+                override fun onSetFailure(message: String?) {
+                    onError?.invoke(message ?: "Failed to set local SDP")
+                }
+            }, sdp)
         }
 
         override fun onSetSuccess() {}
@@ -217,15 +367,22 @@ class ScreenShareEngine(
     private fun handleSignalingMessage(json: JSONObject) {
         val type = json.optString("type")
         val incomingSessionId = json.optString("sessionId")
-        if (sessionId.isNotBlank() && incomingSessionId.isNotBlank() && incomingSessionId != sessionId) {
-            return
-        }
+        val senderId = json.optString("from")
+        if (sessionId.isBlank() || incomingSessionId != sessionId || senderId != partnerId) return
         when (type) {
-            "screenshare_offer" -> onRemoteOfferReceived(json.optString("sdp"))
-            "screenshare_answer" -> onRemoteAnswerReceived(json.optString("sdp"))
+            "screenshare_offer" -> {
+                if (json.optString("sdp").length > MAX_SDP_CHARS) return
+                remoteCandidateBuffer.beginDescription()
+                onRemoteOfferReceived(json.optString("sdp"))
+            }
+            "screenshare_answer" -> {
+                if (json.optString("sdp").length > MAX_SDP_CHARS) return
+                remoteCandidateBuffer.beginDescription()
+                onRemoteAnswerReceived(json.optString("sdp"))
+            }
             "screenshare_ice" -> onRemoteIceCandidateReceived(
                 sdp = json.optString("sdp"),
-                sdpMLineIndex = json.optInt("sdpMLineIndex", 0),
+                sdpMLineIndex = json.optInt("sdpMLineIndex", -1),
                 sdpMid = json.optString("sdpMid")
             )
             "screenshare_pause" -> onPauseStateChanged?.invoke(true)
@@ -235,37 +392,127 @@ class ScreenShareEngine(
     }
 
     private fun onRemoteOfferReceived(sdp: String) {
-        if (sdp.isBlank()) return
-        peerConnection?.setRemoteDescription(
-            sdpObserver,
-            SessionDescription(SessionDescription.Type.OFFER, sdp)
-        )
-        peerConnection?.createAnswer(sdpObserver, MediaConstraints())
+        if (sdp.isBlank() || sdp.length > MAX_SDP_CHARS) return
+        setRemoteDescription(SessionDescription.Type.OFFER, sdp) {
+            beginLocalNegotiation()
+            peerConnection?.createAnswer(sdpObserver, MediaConstraints())
+        }
     }
 
     private fun onRemoteAnswerReceived(sdp: String) {
-        if (sdp.isBlank()) return
-        peerConnection?.setRemoteDescription(
-            sdpObserver,
-            SessionDescription(SessionDescription.Type.ANSWER, sdp)
-        )
+        if (sdp.isBlank() || sdp.length > MAX_SDP_CHARS) return
+        setRemoteDescription(SessionDescription.Type.ANSWER, sdp) {}
+    }
+
+    private fun setRemoteDescription(type: SessionDescription.Type, sdp: String, onReady: () -> Unit) {
+        val connection = peerConnection ?: run {
+            onError?.invoke("Screen-sharing peer connection is unavailable")
+            return
+        }
+        connection.setRemoteDescription(object : SdpObserver {
+            override fun onCreateSuccess(p0: SessionDescription?) {}
+            override fun onSetSuccess() {
+                remoteCandidateBuffer.markDescriptionReady().forEach { candidate ->
+                    if (peerConnection?.addIceCandidate(candidate) == false) {
+                        onError?.invoke("WebRTC rejected a queued screen-sharing ICE candidate")
+                    }
+                }
+                onReady()
+            }
+            override fun onCreateFailure(message: String?) {
+                onError?.invoke(message ?: "Failed to apply remote SDP")
+            }
+            override fun onSetFailure(message: String?) {
+                onError?.invoke(message ?: "Failed to apply remote SDP")
+            }
+        }, SessionDescription(type, sdp))
     }
 
     private fun onRemoteIceCandidateReceived(sdp: String, sdpMLineIndex: Int, sdpMid: String) {
-        if (sdp.isBlank() || sdpMid.isBlank()) return
-        peerConnection?.addIceCandidate(IceCandidate(sdpMid, sdpMLineIndex, sdp))
+        if (sdp.isBlank() || sdp.length > MAX_ICE_CANDIDATE_CHARS || sdpMid.isBlank() ||
+            sdpMid.length > 64 || sdpMLineIndex < 0
+        ) return
+        val result = remoteCandidateBuffer.offer(IceCandidate(sdpMid, sdpMLineIndex, sdp))
+        when (result.disposition) {
+            CandidateBufferDisposition.SEND_NOW -> {
+                if (result.immediate?.let { peerConnection?.addIceCandidate(it) } == false) {
+                    onError?.invoke("WebRTC rejected a screen-sharing ICE candidate")
+                }
+            }
+            CandidateBufferDisposition.BUFFERED -> Unit
+            CandidateBufferDisposition.OVERFLOW -> {
+                onError?.invoke("Too many screen-sharing ICE candidates arrived before SDP")
+                endSession(notifyPeer = false)
+            }
+        }
+    }
+
+    private fun beginLocalNegotiation() {
+        synchronized(signalEnqueueLock) { localCandidateBuffer.beginDescription() }
+    }
+
+    /** Queue SDP first, then candidates, in a single ordered enqueue operation. */
+    private fun enqueueDescription(type: String, fields: JSONObject) {
+        var failed = false
+        synchronized(signalEnqueueLock) {
+            failed = !enqueueSignalLocked(type, fields)
+            if (!failed) {
+                failed = localCandidateBuffer.markDescriptionReady().any { candidate ->
+                    !enqueueSignalLocked("screenshare_ice", candidate)
+                }
+            }
+        }
+        if (failed) failSignaling("The bounded screen-sharing signal queue is full")
+    }
+
+    private fun queueLocalCandidate(candidate: IceCandidate) {
+        if (didCleanup || candidate.sdp.isBlank() || candidate.sdp.length > MAX_ICE_CANDIDATE_CHARS) return
+        val payload = JSONObject().apply {
+            put("sessionId", sessionId)
+            put("sdp", candidate.sdp)
+            put("sdpMLineIndex", candidate.sdpMLineIndex)
+            put("sdpMid", candidate.sdpMid)
+        }
+        var failure: String? = null
+        synchronized(signalEnqueueLock) {
+            when (localCandidateBuffer.offer(payload).disposition) {
+                CandidateBufferDisposition.SEND_NOW -> {
+                    if (!enqueueSignalLocked("screenshare_ice", payload)) {
+                        failure = "The bounded screen-sharing signal queue is full"
+                    }
+                }
+                CandidateBufferDisposition.BUFFERED -> Unit
+                CandidateBufferDisposition.OVERFLOW ->
+                    failure = "Too many local screen-sharing ICE candidates arrived before SDP"
+            }
+        }
+        failure?.let(::failSignaling)
     }
 
     private fun sendSignal(type: String, extras: JSONObject = JSONObject()) {
         val payload = JSONObject(extras.toString()).apply {
             if (sessionId.isNotBlank()) put("sessionId", sessionId)
         }
-        engineScope.launch {
-            runCatching { networkEngine.sendControlSignal(type, payload) }
-        }
+        val queued = synchronized(signalEnqueueLock) { enqueueSignalLocked(type, payload) }
+        if (!queued) failSignaling("The bounded screen-sharing signal queue is full")
+    }
+
+    private fun enqueueSignalLocked(type: String, payload: JSONObject): Boolean =
+        (!didCleanup || type == "screenshare_stop") &&
+            outgoingSignals.trySend(OutgoingSignal(type, JSONObject(payload.toString()))).isSuccess
+
+    private fun failSignaling(message: String) {
+        onError?.invoke("$message; no alternate route was attempted")
+        endSession(notifyPeer = false)
     }
 
     private fun cleanUp() {
+        statsJob?.cancel()
+        statsJob = null
+        recoveryJob?.cancel()
+        recoveryJob = null
+        remoteCandidateBuffer.beginDescription()
+        synchronized(signalEnqueueLock) { localCandidateBuffer.beginDescription() }
         runCatching { capturer?.stopCapture() }
         runCatching { capturer?.dispose() }
         capturer = null
@@ -275,6 +522,7 @@ class ScreenShareEngine(
         localVideoTrack = null
         runCatching { localAudioTrack?.dispose() }
         localAudioTrack = null
+        localVideoSender = null
         runCatching { videoSource?.dispose() }
         videoSource = null
         runCatching { audioSource?.dispose() }
@@ -287,6 +535,7 @@ class ScreenShareEngine(
 
     fun release() {
         endSession(notifyPeer = false)
+        networkEngine.onControlSignalReceived = null
         engineScope.cancel()
         runCatching { peerConnectionFactory.dispose() }
     }

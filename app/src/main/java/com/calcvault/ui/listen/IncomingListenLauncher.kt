@@ -2,7 +2,6 @@ package com.calcvault.ui.listen
 
 import android.app.Activity
 import android.content.Intent
-import com.calcvault.listen.ListenTogetherCrypto
 import org.json.JSONObject
 
 object IncomingListenLauncher {
@@ -12,11 +11,12 @@ object IncomingListenLauncher {
     fun launchIfNeeded(activity: Activity, signal: JSONObject, fallbackRemoteUser: String): Boolean {
         if (signal.optString("type") != "listen_invite") return false
 
-        val payload = ListenTogetherCrypto.unwrap(signal.optJSONObject("payload")) ?: JSONObject()
+        val payload = signal.optJSONObject("payload") ?: JSONObject()
         val sessionId = signal.optString("sessionId").ifBlank { payload.optString("sessionId") }
-        if (sessionId.isBlank() || sessionId == lastLaunchedSessionId) return false
-
-        val fromUser = signal.optString("from").ifBlank { fallbackRemoteUser }
+        val fromUser = signal.optString("from")
+        if (sessionId.isBlank() || sessionId == lastLaunchedSessionId ||
+            fromUser.isBlank() || fromUser != fallbackRemoteUser
+        ) return true
         lastLaunchedSessionId = sessionId
 
         activity.startActivity(

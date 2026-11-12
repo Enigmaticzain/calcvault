@@ -16,7 +16,6 @@ import kotlinx.coroutines.Dispatchers
 import com.calcvault.auth.BiometricHelper
 import com.calcvault.auth.UnlockManager
 import com.calcvault.companion.CompanionBridgeController
-import com.calcvault.companion.CompanionBridgeService
 import com.calcvault.emotional.ThemeEngine
 import com.calcvault.emotional.themes.ThemeApplicator
 import com.calcvault.network.SecurePairingManager
@@ -189,7 +188,7 @@ class SettingsActivity : AppCompatActivity() {
                 Intent(this, WatchTogetherActivity::class.java).apply {
                     putExtra(WatchTogetherActivity.EXTRA_SESSION_ID, "quick_session")
                     putExtra(WatchTogetherActivity.EXTRA_MOVIE_PATH, "")
-                    putExtra(WatchTogetherActivity.EXTRA_PEER_ID, SessionManager.partnerUserId.ifBlank { "partner" })
+                    putExtra(WatchTogetherActivity.EXTRA_PEER_ID, SessionManager.partnerUserId.ifBlank { com.calcvault.utils.PairedUserIdentity.USER_B })
                     putExtra(WatchTogetherActivity.EXTRA_IS_HOST, true)
                 },
                 "Watch Together"
@@ -242,38 +241,36 @@ class SettingsActivity : AppCompatActivity() {
         addDivider()
 
         addSectionTitle("📱 Connectivity")
-        
+        addSettingRow("Privacy & Connection Controls", secondary = "Feature routes, IP exposure, blocking, reports") {
+            safeStart(Intent(this, PrivacyControlsActivity::class.java), "Privacy & Connection Controls")
+        }
+
         // --- Added Messaging Connectivity Section ---
         addSectionTitle("Messaging Mode", color = theme.accentColor)
-        val mode = if (SessionManager.signalingUrl.isEmpty() || SessionManager.signalingUrl.contains("onrender.com")) "Relay (Render)" 
-                  else if (SessionManager.signalingUrl.contains(":43831")) "Laptop Bridge" 
-                  else "Custom / Direct"
+        val signalingUrl = SessionManager.signalingUrl.ifBlank { DEFAULT_SIGNALING }
+        val mode = if (signalingUrl.startsWith("https://", ignoreCase = true)) {
+            if (signalingUrl.contains("onrender.com")) "HTTPS signaling configured; feature traffic remains unavailable" else "Custom HTTPS signaling configured; feature traffic remains unavailable"
+        } else {
+            "Unavailable — HTTP/direct signaling is blocked"
+        }
         addSettingRow("Current Mode", secondary = mode) { showConnectivityModeChooser() }
         
         addSettingRow("Signaling Server URL", secondary = SessionManager.signalingUrl.ifBlank { "Default (Render)" }) {
             showSignalingUrlInput()
         }
 
-        addSettingToggle("Start Direct Messaging Server", false) { enabled ->
-            if (enabled) {
-                CompanionBridgeService.start(this, bindLan = true)
-                val ip = getLocalIpAddress()
-                val sigUrl = "http://$ip:37112"
-                toast("Server started at $sigUrl")
-                android.app.AlertDialog.Builder(this)
-                    .setTitle("Messaging Server Active")
-                    .setMessage("Your partner should set their Signaling URL to:\n\n$sigUrl")
-                    .setPositiveButton("Copy URL") { _, _ ->
-                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        val clip = android.content.ClipData.newPlainText("Signaling URL", sigUrl)
-                        clipboard.setPrimaryClip(clip)
-                    }
-                    .setNegativeButton("Close", null)
-                    .show()
-            } else {
-                CompanionBridgeService.stop(this)
-                toast("Server stopped")
-            }
+        addSettingRow(
+            "Direct/LAN Messaging Server",
+            secondary = "Unavailable: no verified E2EE plus ciphertext-only signaling route; HTTP/direct fallback is blocked"
+        ) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Direct messaging unavailable")
+                .setMessage(
+                    "No direct or HTTP messaging server will be started. Messaging remains local until a " +
+                        "verified E2EE transport and a privacy-approved route are implemented. No fallback is attempted."
+                )
+                .setPositiveButton("OK", null)
+                .show()
         }
         addDivider()
         // --- End Added Section ---
@@ -413,12 +410,10 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun showPairingOptions() {
-        val options = arrayOf("Create Pairing Code", "Enter Pairing Code")
         android.app.AlertDialog.Builder(this)
-            .setTitle("Pair with Partner")
-            .setItems(options) { _, which ->
-                if (which == 0) startCreateCodeFlow() else startJoinCodeFlow()
-            }
+            .setTitle("Secure pairing unavailable")
+            .setMessage(SecurePairingManager.UNAVAILABLE_REASON)
+            .setPositiveButton(android.R.string.ok, null)
             .show()
     }
 
@@ -1073,81 +1068,51 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun showConnectivityModeChooser() {
-        val options = arrayOf("Relay Server (Standard)", "Laptop Bridge (PC)", "Direct/Custom Server")
+        val options = arrayOf("Configured HTTPS signaling endpoint", "Custom HTTPS signaling endpoint")
         android.app.AlertDialog.Builder(this)
-            .setTitle("Choose Messaging Mode")
+            .setTitle("Choose signaling endpoint")
+            .setMessage(
+                "HTTP and direct/LAN routes are blocked. This endpoint does not provide authenticated, " +
+                    "ciphertext-only signaling, so calls and sync controls remain unavailable. Message content " +
+                    "remains disabled until verified E2EE and an approved content route exist."
+            )
             .setItems(options) { _, which ->
-                when (which) {
-                    0 -> {
-                        SessionManager.signalingUrl = DEFAULT_SIGNALING
-                        toast("Mode: Relay")
-                    }
-                    1 -> {
-                        showLaptopBridgeInput()
-                    }
-                    2 -> {
-                        showSignalingUrlInput()
-                    }
-                }
-                rebuildUI()
-            }
-            .show()
-    }
-
-    private fun showLaptopBridgeInput() {
-        val et = EditText(this).apply {
-            hint = "192.168.1.5"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT
-        }
-        android.app.AlertDialog.Builder(this)
-            .setTitle("Enter Laptop IP")
-            .setMessage("The companion app must be running on your laptop.")
-            .setView(et)
-            .setPositiveButton("Set") { _, _ ->
-                val ip = et.text.toString().trim()
-                if (ip.isNotEmpty()) {
-                    SessionManager.signalingUrl = "http://$ip:43831"
-                    toast("Mode: Laptop Bridge")
+                if (which == 0) {
+                    SessionManager.signalingUrl = DEFAULT_SIGNALING
+                    toast("Configured HTTPS signaling selected; content remains fail-closed")
                     rebuildUI()
+                } else {
+                    showSignalingUrlInput()
                 }
             }
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
     private fun showSignalingUrlInput() {
         val et = EditText(this).apply {
             setText(SessionManager.signalingUrl)
-            hint = "http://partner-ip:37112"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            hint = "https://signaling.example"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
         }
         android.app.AlertDialog.Builder(this)
             .setTitle("Signaling Server URL")
-            .setMessage("Enter the URL of the messaging server (laptop or partner's phone).")
+            .setMessage(
+                "Only HTTPS signaling endpoints are accepted. HTTP/LAN endpoints are blocked; " +
+                    "this does not enable messaging or replace verified E2EE."
+            )
             .setView(et)
             .setPositiveButton("Save") { _, _ ->
-                SessionManager.signalingUrl = et.text.toString().trim()
+                val url = et.text.toString().trim()
+                if (!url.startsWith("https://", ignoreCase = true)) {
+                    toast("Not saved: HTTP/direct signaling is unavailable. No fallback was attempted.")
+                    return@setPositiveButton
+                }
+                SessionManager.signalingUrl = url
                 rebuildUI()
             }
+            .setNegativeButton("Cancel", null)
             .show()
-    }
-
-    private fun getLocalIpAddress(): String {
-        try {
-            val en = java.net.NetworkInterface.getNetworkInterfaces()
-            while (en.hasMoreElements()) {
-                val intf = en.nextElement()
-                val enumIpAddr = intf.inetAddresses
-                while (enumIpAddr.hasMoreElements()) {
-                    val inetAddress = enumIpAddr.nextElement()
-                    if (!inetAddress.isLoopbackAddress && inetAddress is java.net.Inet4Address) {
-                        return inetAddress.hostAddress ?: "127.0.0.1"
-                    }
-                }
-            }
-        } catch (ex: Exception) {
-            Log.e("Settings", ex.toString())
-        }
-        return "127.0.0.1"
     }
 
     private fun toast(msg: String) {

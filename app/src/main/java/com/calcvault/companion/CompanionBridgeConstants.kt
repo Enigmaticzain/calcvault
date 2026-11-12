@@ -2,7 +2,6 @@ package com.calcvault.companion
 
 object CompanionBridgeConstants {
     const val BRIDGE_PORT = 37111
-    const val SIGNALING_PORT = 37112
     const val BRIDGE_PATH = "/bridge"
     const val PROTOCOL_VERSION = 1
 

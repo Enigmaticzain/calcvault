@@ -7,23 +7,27 @@ import android.os.SystemClock
 import android.view.*
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.calcvault.call.CallEngine
+import com.calcvault.call.CallForegroundService
 import com.calcvault.databinding.ActivityCallBinding
 import com.calcvault.emotional.EmotionalAnimationEngine
 import com.calcvault.emotional.ThemeEngine
 import com.calcvault.emotional.themes.ThemeApplicator
 import com.calcvault.messaging.AppendOnlyMessageDB
 import com.calcvault.network.NetworkMessageEngine
+import com.calcvault.network.privacy.PrivacyFeature
 import com.calcvault.storage.USBStorageEngine
+import com.calcvault.utils.PairedUserIdentity
 import com.calcvault.utils.SessionManager
 import kotlinx.coroutines.*
-import org.json.JSONObject
+import org.webrtc.EglBase
+import org.webrtc.SurfaceViewRenderer
+import org.webrtc.VideoTrack
+import java.util.concurrent.TimeUnit
 
 /**
  * CallActivity
@@ -43,15 +47,32 @@ class CallActivity : AppCompatActivity() {
     private var callStartTime = 0L
     private var timerJob: Job? = null
     private var isVideo = false
-    private var localUserId = "zain"
+    private var activeRouteDisclosure = ""
+    private var localUserId = PairedUserIdentity.USER_A
     private var partnerUserId = "sanu"
+    private var incomingCallLaunch = false
+    private var pendingPermissionAction: (() -> Unit)? = null
+    private var localVideoRenderer: SurfaceViewRenderer? = null
+    private var remoteVideoRenderer: SurfaceViewRenderer? = null
+    private var callForegroundStarted = false
 
     companion object {
         private const val DEFAULT_SIGNALING = "https://calcvault-signal.onrender.com"
+        private const val REQUEST_CALL_PERMISSIONS = 4021
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (intent.action == CallForegroundService.ACTION_END_CALL ||
+            intent.action == CallForegroundService.ACTION_RESUME_CALL
+        ) {
+            stopService(android.content.Intent(this, CallForegroundService::class.java))
+            if (intent.action == CallForegroundService.ACTION_RESUME_CALL) {
+                Toast.makeText(this, "The call screen was not recoverable; the call session has ended.", Toast.LENGTH_LONG).show()
+            }
+            finish()
+            return
+        }
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -59,54 +80,97 @@ class CallActivity : AppCompatActivity() {
         setContentView(binding.root)
         ThemeApplicator.applyActive(this)
 
-        localUserId = SessionManager.localUserId.ifBlank { "zain" }
-        partnerUserId = SessionManager.partnerUserId.ifBlank {
-            if (localUserId == "zain") "sanu" else "zain"
-        }
+        localUserId = PairedUserIdentity.stableId(SessionManager.localUserId) ?: PairedUserIdentity.USER_A
+        partnerUserId = PairedUserIdentity.stableId(SessionManager.partnerUserId)
+            ?: PairedUserIdentity.partnerId(localUserId)
+            ?: PairedUserIdentity.USER_B
 
+        isVideo = intent.getBooleanExtra("is_video", false)
         storageEngine = USBStorageEngine.getInstance(this)
         messageDB = AppendOnlyMessageDB(storageEngine)
         networkEngine = NetworkMessageEngine(this, messageDB, storageEngine)
+        networkEngine.onPrivacyRouteUnavailable = { explanation ->
+            runOnUiThread {
+                binding.tvCallStatus.text = explanation
+                Toast.makeText(this, explanation, Toast.LENGTH_LONG).show()
+            }
+        }
         networkEngine.initialize(
             localUserId,
             partnerUserId,
-            SessionManager.signalingUrl.ifBlank { DEFAULT_SIGNALING }
+            SessionManager.signalingUrl.ifBlank { DEFAULT_SIGNALING },
+            feature = if (isVideo) PrivacyFeature.VIDEO_CALLS else PrivacyFeature.AUDIO_CALLS
         )
         callEngine = CallEngine(this, storageEngine, messageDB)
-        callEngine.attachSignaling(networkEngine)
+        callEngine.attachSignaling(networkEngine, partnerUserId, localUserId)
+        callEngine.onPrepareCallMedia = { startCallForegroundService() }
         themeEngine = ThemeEngine(this)
         animEngine = EmotionalAnimationEngine(this, binding.root)
 
-        isVideo = intent.getBooleanExtra("is_video", false)
         val isIncoming = intent.getBooleanExtra("is_incoming", false)
+        incomingCallLaunch = isIncoming
 
         setupUI()
         observeCallState()
         observeControlSignals()
-
-        if (isIncoming) {
-            callEngine.onIncomingCall(
-                callId = intent.getStringExtra("call_id") ?: "",
-                fromUser = intent.getStringExtra("from_user") ?: partnerUserId,
-                type = if (isVideo) CallEngine.CallType.VIDEO else CallEngine.CallType.VOICE,
-                callerIp = intent.getStringExtra("caller_ip") ?: "",
-                localUser = localUserId
-            )
-            renderIncomingRinging()
-        } else {
-            callEngine.startCall(localUserId, partnerUserId, if (isVideo) CallEngine.CallType.VIDEO else CallEngine.CallType.VOICE)
-            renderOutgoingRinging()
+        callEngine.onWebRtcManagerCreated = { manager -> runOnUiThread { setupWebRtcRenderers(manager.eglBaseContext) } }
+        callEngine.onLocalVideoTrack = { track ->
+            runOnUiThread { localVideoRenderer?.let { track.addSink(it); it.visibility = View.VISIBLE } }
+        }
+        callEngine.onRemoteVideoTrack = { track ->
+            runOnUiThread { remoteVideoRenderer?.let { track.addSink(it); it.visibility = View.VISIBLE } }
+        }
+        callEngine.onCallRouteDisclosure = { disclosure ->
+            activeRouteDisclosure = disclosure
+            runOnUiThread { binding.tvCallStatus.text = disclosure }
         }
 
-        if (isVideo) startCamera()
+        val unavailableRoute = networkEngine.privacyRouteUnavailableReason
+        if (!unavailableRoute.isNullOrBlank()) {
+            binding.tvCallStatus.text = "Call unavailable. $unavailableRoute"
+            binding.rowAnswerDecline.visibility = View.GONE
+            binding.layoutActiveControls.visibility = View.GONE
+            return
+        }
+
+        if (isIncoming) {
+            val callId = intent.getStringExtra("call_id") ?: ""
+            callEngine.onIncomingCall(
+                callId = callId,
+                fromUser = intent.getStringExtra("from_user") ?: partnerUserId,
+                type = if (isVideo) CallEngine.CallType.VIDEO else CallEngine.CallType.VOICE,
+                localUser = localUserId
+            )
+            CallSignalInbox.drain(callId).forEach(callEngine::handleIncomingSignal)
+            renderIncomingRinging()
+        } else {
+            renderOutgoingRinging()
+            binding.tvCallStatus.text = "Waiting for call permissions..."
+            requireCallPermissions {
+                binding.tvCallStatus.text = "Checking the selected call route..."
+                callEngine.startCall(
+                    localUserId,
+                    partnerUserId,
+                    if (isVideo) CallEngine.CallType.VIDEO else CallEngine.CallType.VOICE
+                )
+            }
+        }
     }
 
     private fun setupUI() {
         binding.tvPartnerName.text = SessionManager.partnerNickname.ifBlank { SessionManager.partnerUserId.ifBlank { "Secure Partner" } }
+        binding.btnVideo.visibility = if (isVideo) View.VISIBLE else View.GONE
+        binding.btnVideo.contentDescription = getString(R.string.button_camera_off)
 
-        binding.btnAnswer.setOnClickListener { callEngine.answerCall() }
-        binding.btnDecline.setOnClickListener { callEngine.declineCall(); finish() }
-        binding.btnEnd.setOnClickListener { callEngine.endCall(); finish() }
+        binding.btnAnswer.setOnClickListener { requireCallPermissions { callEngine.answerCall() } }
+        binding.btnDecline.setOnClickListener {
+            binding.tvCallStatus.text = "Declining call..."
+            callEngine.declineCall()
+        }
+        binding.btnEnd.setOnClickListener {
+            binding.tvCallStatus.text = "Ending call..."
+            callEngine.endCall()
+        }
 
         binding.btnMute.setOnClickListener {
             callEngine.toggleMute()
@@ -126,8 +190,31 @@ class CallActivity : AppCompatActivity() {
             )
         }
 
+        binding.btnVideo.setOnClickListener {
+            val enabled = callEngine.toggleVideo()
+            if (enabled == null) {
+                Toast.makeText(this, "Camera control is unavailable until the video track is ready.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            binding.btnVideo.backgroundTintList = ContextCompat.getColorStateList(
+                this,
+                if (enabled) com.calcvault.R.color.cv_accent else com.calcvault.R.color.cv_button_neutral
+            )
+            binding.btnVideo.contentDescription = getString(
+                if (enabled) R.string.button_camera_off else R.string.button_camera_on
+            )
+        }
+
+        // Keep the recording entry point visible, but do not capture call media until
+        // participant consent and encrypted, owner-scoped storage are implemented.
+        binding.btnRecord.visibility = View.VISIBLE
+        binding.layoutRecording.visibility = View.GONE
         binding.btnRecord.setOnClickListener {
-            binding.layoutRecording.visibility = if (binding.layoutRecording.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Call recording unavailable")
+                .setMessage("Recording is not started: this build lacks a consented recording flow and verified encrypted storage for captured media. Calls are not recorded in the background.")
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
         }
 
         binding.btnStartRecording.setOnClickListener {
@@ -149,27 +236,72 @@ class CallActivity : AppCompatActivity() {
         }
     }
 
-    private fun startCamera() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), 101)
+    private fun requireCallPermissions(onGranted: () -> Unit) {
+        val required = buildList {
+            add(Manifest.permission.RECORD_AUDIO)
+            if (isVideo) add(Manifest.permission.CAMERA)
+        }
+        val missing = required.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) {
+            onGranted()
             return
         }
-
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-            val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
-            val preview = Preview.Builder().build().also {
-                it.setSurfaceProvider(binding.viewFinder.surfaceProvider)
-            }
-            val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
-            try {
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(this, cameraSelector, preview)
-                binding.viewFinder.visibility = View.VISIBLE
-                binding.videoOverlay.visibility = View.VISIBLE
-            } catch (e: Exception) {}
-        }, ContextCompat.getMainExecutor(this))
+        pendingPermissionAction = onGranted
+        ActivityCompat.requestPermissions(this, missing.toTypedArray(), REQUEST_CALL_PERMISSIONS)
     }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQUEST_CALL_PERMISSIONS) return
+        val granted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+        val action = pendingPermissionAction
+        pendingPermissionAction = null
+        if (granted) {
+            action?.invoke()
+        } else {
+            binding.tvCallStatus.text = "Microphone/camera permission was denied. Call not started."
+            if (incomingCallLaunch) callEngine.declineCall()
+        }
+    }
+
+    private fun setupWebRtcRenderers(eglContext: EglBase.Context) {
+        if (!isVideo || remoteVideoRenderer != null) return
+        val root = binding.root
+        val remote = SurfaceViewRenderer(this).apply {
+            init(eglContext, null)
+            setEnableHardwareScaler(true)
+            visibility = View.GONE
+        }
+        val remoteParams = ConstraintLayout.LayoutParams(
+            ConstraintLayout.LayoutParams.MATCH_PARENT,
+            ConstraintLayout.LayoutParams.MATCH_PARENT
+        )
+        root.addView(remote, 0, remoteParams)
+        remoteVideoRenderer = remote
+
+        val local = SurfaceViewRenderer(this).apply {
+            init(eglContext, null)
+            setEnableHardwareScaler(true)
+            setMirror(true)
+            visibility = View.GONE
+        }
+        val localParams = ConstraintLayout.LayoutParams(dp(132), dp(176)).apply {
+            topToTop = ConstraintLayout.LayoutParams.PARENT_ID
+            endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
+            topMargin = dp(84)
+            marginEnd = dp(16)
+        }
+        root.addView(local, 1, localParams)
+        localVideoRenderer = local
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun renderIncomingRinging() {
         binding.tvCallStatus.text = "Incoming ${if (isVideo) "Video" else "Voice"} Call..."
@@ -192,17 +324,16 @@ class CallActivity : AppCompatActivity() {
     }
 
     private fun renderActiveCall() {
-        binding.tvCallStatus.text = if (isVideo) {
-            "Voice active, video preview local only"
-        } else {
-            "Secure Voice Active"
-        }
+        val mediaStatus = if (isVideo) "Video call active" else "Voice call active"
+        val routeStatus = activeRouteDisclosure.ifBlank { "Route details unavailable" }
+        binding.tvCallStatus.text = "$mediaStatus. WebRTC media intends DTLS-SRTP (not device-validated); peer identity is not verified. " +
+            "Signaling is JSON over the configured HTTPS service, which can see account/call IDs, timestamps, SDP/ICE and network metadata. $routeStatus"
         binding.rowAnswerDecline.visibility = View.GONE
         binding.layoutActiveControls.visibility = View.VISIBLE
         binding.tvTimer.visibility = View.VISIBLE
         binding.waveformView.visibility = View.VISIBLE
         binding.waveformView.startAnimating()
-        startCallTimer()
+        if (timerJob?.isActive != true) startCallTimer()
         animEngine.stopCallPulse(binding.avatarCard)
     }
 
@@ -242,9 +373,18 @@ class CallActivity : AppCompatActivity() {
                     CallEngine.CallState.OUTGOING_RINGING -> renderOutgoingRinging()
                     CallEngine.CallState.INCOMING_RINGING -> renderIncomingRinging()
                     CallEngine.CallState.CONNECTING -> renderConnecting()
-                    CallEngine.CallState.ACTIVE -> renderActiveCall()
-                    CallEngine.CallState.ENDED -> renderCallEnded()
-                    CallEngine.CallState.FAILED -> renderCallFailed()
+                    CallEngine.CallState.ACTIVE -> {
+                        renderActiveCall()
+                        startCallForegroundService()
+                    }
+                    CallEngine.CallState.ENDED -> {
+                        stopCallForegroundService()
+                        renderCallEnded()
+                    }
+                    CallEngine.CallState.FAILED -> {
+                        stopCallForegroundService()
+                        renderCallFailed()
+                    }
                     else -> {}
                 }
             }
@@ -257,26 +397,40 @@ class CallActivity : AppCompatActivity() {
     }
 
     private fun observeControlSignals() {
-        networkEngine.onControlSignalReceived = { json ->
-            handleControlSignal(json)
+        callEngine.attachSignalHandler()
+    }
+
+    @Synchronized
+    private fun startCallForegroundService(): Boolean {
+        if (callForegroundStarted) return true
+        return runCatching {
+            val startLatch = CallForegroundService.prepareForegroundStart()
+            val serviceIntent = android.content.Intent(this, CallForegroundService::class.java).apply {
+                action = CallForegroundService.ACTION_START
+                putExtra(CallForegroundService.EXTRA_VIDEO, isVideo)
+                putExtra(CallForegroundService.EXTRA_CALL_ID, callEngine.currentCall?.callId.orEmpty())
+            }
+            ContextCompat.startForegroundService(this, serviceIntent)
+            val started = startLatch.await(2, TimeUnit.SECONDS) && CallForegroundService.isForegroundActive()
+            if (!started) {
+                stopService(android.content.Intent(this, CallForegroundService::class.java))
+                throw IllegalStateException("Android did not confirm foreground microphone/camera service startup")
+            }
+            callForegroundStarted = true
+            true
+        }.getOrElse { error ->
+            if (!isDestroyed) runOnUiThread {
+                binding.tvCallStatus.text = "Call not started: foreground microphone/camera service failed (${error.message ?: "unknown error"})."
+            }
+            false
         }
     }
 
-    private fun handleControlSignal(json: JSONObject) {
-        val from = json.optString("from").ifBlank { partnerUserId }
-        if (from != partnerUserId) return
-
-        when (json.optString("type")) {
-            "call_accept" -> callEngine.onRemoteCallAccepted(json.optString("callId"))
-            "call_reject" -> callEngine.onRemoteCallRejected(
-                json.optString("callId"),
-                json.optString("reason", "DECLINED")
-            )
-            "call_end" -> callEngine.onRemoteCallEnded(
-                json.optString("callId"),
-                json.optString("reason", "REMOTE_ENDED")
-            )
-        }
+    @Synchronized
+    private fun stopCallForegroundService() {
+        if (!callForegroundStarted) return
+        callForegroundStarted = false
+        runCatching { stopService(android.content.Intent(this, CallForegroundService::class.java)) }
     }
 
     private fun startCallTimer() {
@@ -292,12 +446,70 @@ class CallActivity : AppCompatActivity() {
         }
     }
 
+    @Deprecated("Use system predictive back when available")
+    override fun onBackPressed() {
+        val call = if (::callEngine.isInitialized) callEngine.currentCall else null
+        when (call?.state) {
+            CallEngine.CallState.ACTIVE,
+            CallEngine.CallState.CONNECTING,
+            CallEngine.CallState.ON_HOLD -> moveTaskToBack(true)
+            CallEngine.CallState.INCOMING_RINGING -> callEngine.declineCall()
+            CallEngine.CallState.OUTGOING_RINGING -> callEngine.endCall()
+            else -> super.onBackPressed()
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        when (intent.action) {
+            CallForegroundService.ACTION_END_CALL -> {
+                if (::callEngine.isInitialized && callEngine.currentCall != null) {
+                    callEngine.endCall()
+                } else {
+                    stopCallForegroundService()
+                    finish()
+                }
+            }
+            CallForegroundService.ACTION_RESUME_CALL -> {
+                val call = if (::callEngine.isInitialized) callEngine.currentCall else null
+                if (call == null) {
+                    Toast.makeText(this, "The call has already ended.", Toast.LENGTH_SHORT).show()
+                    stopCallForegroundService()
+                    finish()
+                } else {
+                    when (call.state) {
+                        CallEngine.CallState.ACTIVE -> renderActiveCall()
+                        CallEngine.CallState.CONNECTING,
+                        CallEngine.CallState.ON_HOLD -> renderConnecting()
+                        CallEngine.CallState.INCOMING_RINGING -> renderIncomingRinging()
+                        CallEngine.CallState.OUTGOING_RINGING -> renderOutgoingRinging()
+                        else -> Unit
+                    }
+                }
+            }
+        }
+    }
+
     override fun onDestroy() {
-        super.onDestroy()
         timerJob?.cancel()
-        IncomingCallLauncher.clear(intent.getStringExtra("call_id"))
-        callEngine.endCall()
-        networkEngine.disconnect()
+        val callId = intent.getStringExtra("call_id") ?: intent.getStringExtra(CallForegroundService.EXTRA_CALL_ID)
+        IncomingCallLauncher.clear(callId)
+        CallSignalInbox.discard(callId)
+        // Release microphone/camera tracks before dropping their foreground-service
+        // protection; reversing this order can leave capture running without the FGS.
+        if (::callEngine.isInitialized) {
+            callEngine.onPrepareCallMedia = null
+            callEngine.destroy()
+        }
+        stopCallForegroundService()
+        localVideoRenderer?.release()
+        remoteVideoRenderer?.release()
+        if (::networkEngine.isInitialized) {
+            networkEngine.onPrivacyRouteUnavailable = null
+            networkEngine.onControlSignalReceived = null
+            networkEngine.disconnect()
+        }
         ThemeApplicator.detach(this)
+        super.onDestroy()
     }
 }

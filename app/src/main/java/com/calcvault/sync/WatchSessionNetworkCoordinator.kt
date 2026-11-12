@@ -50,6 +50,14 @@ class WatchSessionNetworkCoordinator(
      */
     fun startNetworkCoordination() {
         Log.d(TAG, "Starting network coordination")
+        if (socketCallEngine.connectionState != SocketCallEngine.ConnectionState.CONNECTED) {
+            isNetworkConnected = false
+            onConnectionHealthChanged?.invoke(false)
+            onNetworkError?.invoke(
+                "Watch synchronization transport is unavailable: legacy raw TCP calling is disabled."
+            )
+            return
+        }
         isNetworkConnected = true
 
         // Start receiving sync events

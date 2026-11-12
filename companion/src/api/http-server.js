@@ -95,52 +95,12 @@ export async function createHttpServer({ config, logger, bridgeManager, backupSt
     next();
   });
 
-  // --- Signaling Endpoints for Phones ---
-  app.post("/register", async (req, res) => {
-    const { device_id, deviceId } = req.body || {};
-    const id = device_id || deviceId;
-    const ip = req.ip || req.connection.remoteAddress;
-    if (id) {
-      const { signalingService } = await import("../services/signaling-service.js");
-      signalingService.register(id, ip);
-      res.json({ ok: true });
-    } else {
-      res.status(400).json({ ok: false });
-    }
-  });
-
-  app.get("/heartbeat/:deviceId", async (req, res) => {
-    const { signalingService } = await import("../services/signaling-service.js");
-    const ok = signalingService.heartbeat(req.params.deviceId);
-    res.json({ ok });
-  });
-
-  app.get("/lookup/:deviceId", async (req, res) => {
-    const { signalingService } = await import("../services/signaling-service.js");
-    const info = signalingService.lookup(req.params.deviceId);
-    if (info.ok) res.json(info);
-    else res.status(404).json(info);
-  });
-
-  app.post("/relay", async (req, res) => {
-    const { signalingService } = await import("../services/signaling-service.js");
-    const ok = signalingService.relay(req.body);
-    res.json({ ok });
-  });
-
-  app.post("/signal", async (req, res) => {
-    const { signalingService } = await import("../services/signaling-service.js");
-    const ok = signalingService.signal(req.body);
-    res.json({ ok });
-  });
-
-  app.get("/poll/:deviceId", async (req, res) => {
-    const { signalingService } = await import("../services/signaling-service.js");
-    const kind = req.query.kind;
-    const result = signalingService.poll(req.params.deviceId, kind);
-    res.json(result);
-  });
-  // --- End Signaling Endpoints ---
+  // Legacy phone signaling accepted unauthenticated identities, messages, and IP metadata.
+  // Keep explicit fail-closed responses for old clients; this companion is not a relay.
+  const signalingUnavailable = (_, res) => {
+    jsonError(res, 410, "secure_signaling_unavailable_no_network_route_attempted");
+  };
+  app.all(["/register", "/heartbeat/:deviceId", "/lookup/:deviceId", "/relay", "/signal", "/poll/:deviceId"], signalingUnavailable);
 
   app.get("/health", (_, res) => {
     res.json({ ok: true, service: "calcvault-companion", ts: Date.now() });
@@ -365,66 +325,22 @@ export async function createHttpServer({ config, logger, bridgeManager, backupSt
   });
 
   const server = http.createServer(app);
-  const wsServer = new WebSocketServer({ server, path: "/ui/events" });
+  // Upgrade handling is centralized below so each socket receives exactly one handler.
+  const wsServer = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
 
-  // --- Added Pairing Signaling WS ---
-  const rooms = new Map(); // roomName -> Set of WS
-  const pairingWsServer = new WebSocketServer({ noServer: true });
-
+  // Only the authenticated local UI event socket is supported. Legacy pairing and
+  // signaling upgrades are rejected without logging peer addresses or message data.
   server.on("upgrade", (req, socket, head) => {
     const { pathname } = new URL(req.url, `http://${req.headers.host}`);
-
-    if (pathname === "/ui/events") {
-      wsServer.handleUpgrade(req, socket, head, (ws) => {
-        wsServer.emit("connection", ws, req);
-      });
-    } else if (pathname === "/ws" || pathname === "/") {
-      pairingWsServer.handleUpgrade(req, socket, head, (ws) => {
-        logger.info("Pairing WS connected", { ip: req.ip || req.connection.remoteAddress });
-
-        ws.on("message", (data) => {
-          try {
-            const json = JSON.parse(data.toString());
-            if (json.join) {
-              const room = json.join;
-              if (!rooms.has(room)) rooms.set(room, new Set());
-              rooms.get(room).add(ws);
-
-              const roomSet = rooms.get(room);
-              if (roomSet.size >= 2) {
-                const status = JSON.stringify({ status: "PEER_CONNECTED" });
-                for (const client of roomSet) {
-                  if (client.readyState === 1) client.send(status);
-                }
-              }
-            } else if (json.signal) {
-              for (const [room, clients] of rooms.entries()) {
-                if (clients.has(ws)) {
-                  for (const client of clients) {
-                    if (client !== ws && client.readyState === 1) {
-                      client.send(data.toString());
-                    }
-                  }
-                  break;
-                }
-              }
-            }
-          } catch (e) {
-            logger.warn("Pairing WS error", { error: e.message });
-          }
-        });
-
-        ws.on("close", () => {
-          for (const clients of rooms.values()) {
-            clients.delete(ws);
-          }
-        });
-      });
-    } else {
+    if (pathname !== "/ui/events") {
+      socket.write("HTTP/1.1 410 Gone\r\nConnection: close\r\n\r\n");
       socket.destroy();
+      return;
     }
+    wsServer.handleUpgrade(req, socket, head, (ws) => {
+      wsServer.emit("connection", ws, req);
+    });
   });
-  // --- End Pairing Signaling WS ---
 
   function broadcast(type, payload) {
     const message = JSON.stringify({ type, payload, ts: Date.now() });
@@ -478,6 +394,8 @@ export async function createHttpServer({ config, logger, bridgeManager, backupSt
         server.once("error", reject);
         server.listen(config.port, config.bindHost, () => {
           server.removeListener("error", reject);
+          const address = server.address();
+          if (address && typeof address === "object") config.port = address.port;
           resolve();
         });
       });

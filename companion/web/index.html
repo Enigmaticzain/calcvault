@@ -36,10 +36,11 @@
           <select id="usbDeviceSelect"></select>
         </div>
         <div class="block">
-          <h3>Local Network (Optional)</h3>
-          <input id="networkUrlInput" type="text" placeholder="ws://phone-ip:37111/bridge" />
+          <h3>Local Network (Unavailable)</h3>
+          <p class="muted">Direct LAN transfer is disabled because no Android File Sharing route with explicit IP disclosure is configured. No route fallback is attempted. Use USB/ADB local-only.</p>
+          <input id="networkUrlInput" type="text" placeholder="Direct LAN route unavailable" disabled />
           <div class="row">
-            <button id="connectNetworkBtn" class="btn">Connect Network</button>
+            <button id="connectNetworkBtn" class="btn" disabled>Network unavailable</button>
             <button id="disconnectBtn" class="btn danger">Disconnect</button>
           </div>
         </div>

@@ -5,6 +5,13 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
+import java.security.MessageDigest
+import java.util.Locale
+import com.calcvault.storage.provider.StorageManager
+import com.calcvault.utils.PairedUserIdentity
+import com.calcvault.utils.SessionManager
+import org.json.JSONObject
 
 /**
  * ZainSanuStorageSystem
@@ -21,7 +28,7 @@ import java.io.File
  */
 class ZainSanuStorageSystem(
     private val context: Context,
-    private val storageRoot: String = "/calcvault/storage"
+    private val storageRoot: String = File(context.filesDir, "calcvault/storage").absolutePath
 ) {
 
     companion object {
@@ -30,7 +37,7 @@ class ZainSanuStorageSystem(
 
     // ─── Components ────────────────────────────────────────────────────────
 
-    val ownershipManager = UserOwnershipManager()
+    val ownershipManager = UserOwnershipManager(File(storageRoot))
     val backupIndexer = BackupIndexer()
     val thumbnailGenerator = ThumbnailGenerator(context)
     val pcBackupManager = PCBackupManager(context, backupIndexer, thumbnailGenerator)
@@ -66,28 +73,31 @@ class ZainSanuStorageSystem(
      * Create necessary storage directories
      */
     private fun createStorageDirectories() {
+        val backupRoot = File(context.filesDir, "CalcvaultBackup")
         val dirs = listOf(
-            "$storageRoot/${UserOwnershipManager.USER_ZAIN}/large_media/audio",
-            "$storageRoot/${UserOwnershipManager.USER_ZAIN}/large_media/video",
-            "$storageRoot/${UserOwnershipManager.USER_ZAIN}/large_media/image",
-            "$storageRoot/${UserOwnershipManager.USER_ZAIN}/large_media/other",
-            "$storageRoot/${UserOwnershipManager.USER_SANU}/media/audio",
-            "$storageRoot/${UserOwnershipManager.USER_SANU}/media/video",
-            "$storageRoot/${UserOwnershipManager.USER_SANU}/media/image",
-            "$storageRoot/shared/audio",
-            "$storageRoot/shared/video",
-            "$storageRoot/shared/image",
-            "/CalcvaultBackup/chats",
-            "/CalcvaultBackup/media",
-            "/CalcvaultBackup/large_media",
-            "/CalcvaultBackup/thumbnails"
+            File(storageRoot, "Zain/large_media/audio"),
+            File(storageRoot, "Zain/large_media/video"),
+            File(storageRoot, "Zain/large_media/image"),
+            File(storageRoot, "Zain/large_media/other"),
+            File(storageRoot, "Sanu/media/audio"),
+            File(storageRoot, "Sanu/media/video"),
+            File(storageRoot, "Sanu/media/image"),
+            File(storageRoot, "shared/audio"),
+            File(storageRoot, "shared/video"),
+            File(storageRoot, "shared/image"),
+            File(backupRoot, "chats"),
+            File(backupRoot, "media"),
+            File(backupRoot, "large_media"),
+            File(backupRoot, "thumbnails")
         )
 
-        dirs.forEach { path ->
+        dirs.forEach { directory ->
             try {
-                File(path).mkdirs()
+                if (!directory.exists() && !directory.mkdirs()) {
+                    Log.w(TAG, "Failed to create app-private directory: ${directory.absolutePath}")
+                }
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to create directory: $path", e)
+                Log.w(TAG, "Failed to create directory: ${directory.absolutePath}", e)
             }
         }
     }
@@ -104,91 +114,151 @@ class ZainSanuStorageSystem(
      */
     suspend fun storeFile(
         sourceFile: File,
-        currentUser: String = UserOwnershipManager.USER_ZAIN,
+        currentUser: String = SessionManager.localUserId.ifBlank { PairedUserIdentity.USER_A },
         fileType: String? = null
     ): FileStorageResult = withContext(Dispatchers.IO) {
-        try {
-            val fileName = sourceFile.name
-            val fileSize = sourceFile.length()
+        val fileName = sourceFile.name
+        if (!StorageManager.isReady()) {
+            return@withContext FileStorageResult(success = false, reason = "Vault is locked; unlock it before saving files.")
+        }
+        if (!sourceFile.isFile || !sourceFile.canRead()) {
+            return@withContext FileStorageResult(success = false, reason = "The selected file is missing or unreadable.")
+        }
+        if (PairedUserIdentity.stableId(currentUser) == null) {
+            return@withContext FileStorageResult(success = false, reason = "Select one of the two paired user identities before saving.")
+        }
 
-            Log.d(TAG, "Storing file: $fileName (${formatSize(fileSize)})")
-
-            // 1. Determine storage location
-            val storageDecision = quotaManager.getStoragePath(fileSize, fileName, currentUser)
-            if (!storageDecision.allowed) {
-                Log.w(TAG, "Storage denied: ${storageDecision.reason}")
-                return@withContext FileStorageResult(
-                    success = false,
-                    fileId = storageDecision.fileId,
-                    reason = storageDecision.reason
-                )
-            }
-
-            // 2. Determine ownership
-            val owner = ownershipManager.determineOwner(fileSize)
-
-            // 3. Create ownership record
-            val ownership = UserOwnershipManager.FileOwnership(
+        val fileSize = sourceFile.length()
+        val storageDecision = quotaManager.getStoragePath(fileSize, fileName, currentUser)
+        if (!storageDecision.allowed) {
+            return@withContext FileStorageResult(
+                success = false,
                 fileId = storageDecision.fileId,
-                fileName = fileName,
-                fileSize = fileSize,
-                owner = owner,
-                storagePath = storageDecision.storagePath,
-                isEncrypted = true
+                reason = storageDecision.reason
             )
+        }
 
-            // 4. Copy file to destination
-            val destFile = File(storageDecision.storagePath)
-            destFile.parentFile?.mkdirs()
-            sourceFile.copyTo(destFile, overwrite = true)
+        val owner = storageDecision.owner
+        val fileTypeValue = fileType?.takeIf { it.isNotBlank() } ?: sourceFile.extension.lowercase(Locale.ROOT)
+        val fileId = storageDecision.fileId
+        val payloadPrefix = "paired-files/$fileId/payload"
+        val thumbnailPrefix = "paired-files/$fileId/thumbnail"
+        val metadataKey = "file-metadata/$fileId"
+        var payloadStored = false
+        var thumbnailStored = false
+        var thumbnailPath: String? = null
+        var temporaryThumbnail: File? = null
 
-            // 5. Generate thumbnail if supported
-            var thumbnailPath: String? = null
+        try {
+            val payloadInfo = storeEncryptedChunks(payloadPrefix, sourceFile)
+            payloadStored = true
+
+            var thumbnailInfo: EncryptedChunkInfo? = null
             if (thumbnailGenerator.supportsThumbnail(sourceFile)) {
                 try {
-                    val thumbFile = File(
-                        "$storageRoot/thumbnails",
-                        "${ownership.fileId}.jpg"
-                    )
-                    if (thumbnailGenerator.generateThumbnail(sourceFile, thumbFile) != null) {
-                        thumbnailPath = thumbFile.absolutePath
+                    val thumbnailTemp = File(context.cacheDir, "cv-thumb-$fileId.jpg")
+                    temporaryThumbnail = thumbnailTemp
+                    val generated = thumbnailGenerator.generateThumbnail(sourceFile, thumbnailTemp)
+                    if (generated != null && generated.isFile) {
+                        thumbnailInfo = storeEncryptedChunks(thumbnailPrefix, generated)
+                        thumbnailStored = true
+                        thumbnailPath = "vault://$thumbnailPrefix"
                     }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to generate thumbnail", e)
+                } catch (thumbnailError: Exception) {
+                    Log.w(TAG, "Could not create encrypted thumbnail for $fileId", thumbnailError)
+                } finally {
+                    temporaryThumbnail?.delete()
                 }
             }
 
-            // 6. If file is large and current user is Sanu, create remote reference
-            if (ownershipManager.isLargeFile(fileSize) && currentUser == UserOwnershipManager.USER_SANU) {
-                val remoteRef = UserOwnershipManager.RemoteFileRef(
-                    id = ownership.fileId,
-                    name = fileName,
-                    size = fileSize,
-                    owner = UserOwnershipManager.USER_ZAIN,
-                    thumbnailPath = thumbnailPath,
-                    accessState = UserOwnershipManager.AccessState.LOCKED,
-                    timestamp = System.currentTimeMillis()
-                )
-                remoteFileRefManager.addRef(remoteRef)
-                Log.d(TAG, "Created remote reference for $fileName")
+            val ownership = UserOwnershipManager.FileOwnership(
+                fileId = fileId,
+                fileName = fileName,
+                fileSize = fileSize,
+                owner = owner,
+                storagePath = "vault://$payloadPrefix",
+                isEncrypted = true,
+                thumbnailPath = thumbnailPath
+            )
+            val metadata = ownership.toJson().apply {
+                put("fileType", fileTypeValue)
+                put("payloadChunkCount", payloadInfo.chunkCount)
+                put("payloadByteCount", payloadInfo.byteCount)
+                put("payloadSha256", payloadInfo.sha256)
+                put("thumbnailChunkCount", thumbnailInfo?.chunkCount ?: 0)
+                put("thumbnailByteCount", thumbnailInfo?.byteCount ?: 0L)
+                put("thumbnailSha256", thumbnailInfo?.sha256 ?: "")
+                put("formatVersion", 1)
+            }.toString().toByteArray(Charsets.UTF_8)
+
+            val metadataCommitted = StorageManager.write(metadataKey, metadata)
+            metadata.fill(0)
+            if (!metadataCommitted) {
+                throw IOException("Could not commit encrypted file metadata")
             }
 
-            Log.i(TAG, "File stored successfully: ${storageDecision.storagePath}")
-
+            val logicalPath = "vault://$payloadPrefix"
+            Log.i(TAG, "Stored encrypted file $fileId (${formatSize(fileSize)}) for ${owner.displayName}")
             FileStorageResult(
                 success = true,
-                fileId = ownership.fileId,
-                filePath = storageDecision.storagePath,
+                fileId = fileId,
+                filePath = logicalPath,
                 thumbnailPath = thumbnailPath,
                 owner = owner.displayName,
                 fileSize = fileSize
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Error storing file", e)
-            FileStorageResult(
-                success = false,
-                reason = "Error: ${e.message}"
-            )
+            StorageManager.delete(metadataKey)
+            if (payloadStored) deleteStoredChunks(payloadPrefix)
+            if (thumbnailStored) deleteStoredChunks(thumbnailPrefix)
+            Log.e(TAG, "Error storing encrypted file", e)
+            FileStorageResult(success = false, fileId = fileId, reason = e.message ?: "Encrypted file storage failed")
+        } finally {
+            temporaryThumbnail?.delete()
+        }
+    }
+
+    private data class EncryptedChunkInfo(val chunkCount: Int, val byteCount: Long, val sha256: String)
+
+    private fun storeEncryptedChunks(prefix: String, source: File): EncryptedChunkInfo {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(1024 * 1024)
+        var chunkCount = 0
+        var byteCount = 0L
+        try {
+            source.inputStream().buffered().use { input ->
+                var finished = false
+                while (!finished) {
+                    val count = input.read(buffer)
+                    if (count < 0) {
+                        finished = true
+                    } else {
+                        digest.update(buffer, 0, count)
+                        byteCount = Math.addExact(byteCount, count.toLong())
+                        val chunk = buffer.copyOf(count)
+                        try {
+                            val key = "$prefix/chunk/${chunkCount.toString().padStart(8, '0')}"
+                            if (!StorageManager.write(key, chunk)) throw IOException("Encrypted chunk write failed")
+                        } finally {
+                            chunk.fill(0)
+                        }
+                        chunkCount++
+                    }
+                }
+            }
+            val hash = digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+            return EncryptedChunkInfo(chunkCount, byteCount, hash)
+        } catch (error: Exception) {
+            deleteStoredChunks(prefix)
+            throw error
+        } finally {
+            buffer.fill(0)
+        }
+    }
+
+    private fun deleteStoredChunks(prefix: String) {
+        runCatching {
+            StorageManager.list("$prefix/chunk/").forEach { key -> StorageManager.delete(key) }
         }
     }
 
@@ -216,8 +286,9 @@ class ZainSanuStorageSystem(
     ): PCBackupManager.BackupResult = withContext(Dispatchers.IO) {
         Log.i(TAG, "Starting PC backup process")
 
+        val backupRoot = File(context.filesDir, "CalcvaultBackup").absolutePath
         val config = PCBackupManager.BackupConfig(
-            backupPath = "/CalcvaultBackup",
+            backupPath = backupRoot,
             includeThumbnails = true,
             encryptBackup = true,
             backupChats = true,
@@ -253,40 +324,143 @@ class ZainSanuStorageSystem(
         userId: String,
         fileId: String
     ): AccessCheckResult = withContext(Dispatchers.IO) {
-        // Try to find in remote references
+        if (fileId.isBlank()) return@withContext missingFileAccess()
+
+        val localMetadataBytes = if (StorageManager.isReady()) {
+            StorageManager.read("file-metadata/$fileId")
+        } else {
+            null
+        }
+        if (localMetadataBytes != null) {
+            val metadata = try {
+                JSONObject(String(localMetadataBytes, Charsets.UTF_8))
+            } catch (_: Exception) {
+                null
+            } finally {
+                localMetadataBytes.fill(0)
+            }
+            val owner = runCatching {
+                metadata?.optString("owner")?.let { UserOwnershipManager.FileOwner.valueOf(it) }
+            }.getOrNull()
+            val chunkCount = metadata?.optInt("payloadChunkCount", -1) ?: -1
+            val hasFirstChunk = chunkCount == 0 || StorageManager.exists(
+                "paired-files/$fileId/payload/chunk/00000000"
+            )
+            val validStoredObject = metadata != null && metadata.optBoolean("isEncrypted", false) &&
+                metadata.optLong("fileSize", -1L) >= 0L && chunkCount >= 0 && hasFirstChunk
+            val canAccess = validStoredObject && owner != null && ownershipManager.canAccessDirectly(userId, owner)
+            return@withContext AccessCheckResult(
+                canAccess = canAccess,
+                isRemote = false,
+                owner = owner?.displayName.orEmpty(),
+                accessState = if (canAccess) UserOwnershipManager.AccessState.AVAILABLE else UserOwnershipManager.AccessState.LOCKED,
+                prompt = if (!validStoredObject) "Encrypted file metadata is incomplete or unavailable." else ""
+            )
+        }
+
         val remoteRef = remoteFileRefManager.getRef(fileId)
         if (remoteRef != null) {
-            val canAccess = remoteRef.accessState == UserOwnershipManager.AccessState.AVAILABLE ||
-                userId == remoteRef.owner
-
+            val canAccess = remoteRef.canAccess(userId)
             return@withContext AccessCheckResult(
                 canAccess = canAccess,
                 isRemote = true,
                 owner = remoteRef.owner,
-                accessState = remoteRef.accessState,
-                prompt = ownershipManager.getAccessPrompt(remoteRef.owner, userId)
+                accessState = if (canAccess) UserOwnershipManager.AccessState.AVAILABLE else UserOwnershipManager.AccessState.LOCKED,
+                prompt = if (remoteRef.isGrantExpired(userId)) {
+                    "This file grant has expired. Ask the owner to grant access again."
+                } else {
+                    ownershipManager.getAccessPrompt(remoteRef.owner, userId)
+                }
             )
         }
 
-        // Try to find in local storage
-        val fileOwner = if (fileId.contains(UserOwnershipManager.USER_ZAIN)) {
-            UserOwnershipManager.FileOwner.ZAIN
-        } else {
-            UserOwnershipManager.FileOwner.SHARED
+        missingFileAccess()
+    }
+
+    private fun missingFileAccess() = AccessCheckResult(
+        canAccess = false,
+        isRemote = false,
+        owner = "",
+        accessState = UserOwnershipManager.AccessState.NOT_FOUND,
+        prompt = "File not found in this vault or the paired user's available references."
+    )
+
+    suspend fun exportFile(fileId: String, userId: String, destination: File): Boolean =
+        exportStoredObject(fileId, userId, "payload", destination)
+
+    suspend fun exportThumbnail(fileId: String, userId: String, destination: File): Boolean =
+        exportStoredObject(fileId, userId, "thumbnail", destination)
+
+    private suspend fun exportStoredObject(
+        fileId: String,
+        userId: String,
+        objectKind: String,
+        destination: File
+    ): Boolean = withContext(Dispatchers.IO) {
+        val access = canAccessFile(userId, fileId)
+        if (!access.canAccess || access.isRemote || !StorageManager.isReady()) return@withContext false
+        if (!fileId.matches(Regex("[A-Za-z0-9_-]{1,80}"))) return@withContext false
+
+        val metadataBytes = StorageManager.read("file-metadata/$fileId") ?: return@withContext false
+        val metadata = try {
+            JSONObject(String(metadataBytes, Charsets.UTF_8))
+        } catch (_: Exception) {
+            return@withContext false
+        } finally {
+            metadataBytes.fill(0)
         }
-
-        val canAccess = ownershipManager.canAccessDirectly(userId, fileOwner)
-
-        AccessCheckResult(
-            canAccess = canAccess,
-            isRemote = false,
-            owner = fileOwner.displayName,
-            accessState = if (canAccess) {
-                UserOwnershipManager.AccessState.AVAILABLE
-            } else {
-                UserOwnershipManager.AccessState.LOCKED
-            }
+        val countField = if (objectKind == "payload") "payloadChunkCount" else "thumbnailChunkCount"
+        val hashField = if (objectKind == "payload") "payloadSha256" else "thumbnailSha256"
+        val expectedChunks = metadata.optInt(countField, -1)
+        val expectedBytes = metadata.optLong(
+            if (objectKind == "payload") "payloadByteCount" else "thumbnailByteCount",
+            -1L
         )
+        val expectedHash = metadata.optString(hashField)
+        if (expectedChunks < 0 || expectedBytes < 0L || expectedHash.isBlank()) return@withContext false
+
+        val parent = destination.absoluteFile.parentFile ?: return@withContext false
+        if (!parent.exists() && !parent.mkdirs()) return@withContext false
+        val temp = File(parent, ".${destination.name}.$fileId.tmp")
+        val digest = MessageDigest.getInstance("SHA-256")
+        var exported = false
+        var exportedBytes = 0L
+        try {
+            temp.outputStream().buffered().use { output ->
+                repeat(expectedChunks) { index ->
+                    val chunkKey = "paired-files/$fileId/$objectKind/chunk/${index.toString().padStart(8, '0')}"
+                    val chunk = StorageManager.read(chunkKey) ?: throw IOException("Encrypted file chunk $index is missing")
+                    try {
+                        digest.update(chunk)
+                        exportedBytes = Math.addExact(exportedBytes, chunk.size.toLong())
+                        output.write(chunk)
+                    } finally {
+                        chunk.fill(0)
+                    }
+                }
+            }
+            val actualHash = digest.digest().joinToString("") { byte -> "%02x".format(byte) }
+            if (exportedBytes != expectedBytes || !actualHash.equals(expectedHash, ignoreCase = true)) {
+                throw IOException("Encrypted file integrity or size check failed")
+            }
+            try {
+                java.nio.file.Files.move(
+                    temp.toPath(),
+                    destination.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE
+                )
+            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                java.nio.file.Files.move(temp.toPath(), destination.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+            exported = true
+            true
+        } catch (error: Exception) {
+            Log.e(TAG, "Encrypted file export failed", error)
+            false
+        } finally {
+            if (!exported) temp.delete()
+        }
     }
 
     data class AccessCheckResult(
@@ -308,10 +482,10 @@ class ZainSanuStorageSystem(
         val refStats = remoteFileRefManager.getStats()
 
         // Check if backup exists
-        val backupDir = File("/CalcvaultBackup")
+        val backupDir = File(context.filesDir, "CalcvaultBackup")
         val backupExists = backupDir.exists()
         val backupIndex = if (backupExists) {
-            backupIndexer.loadIndex()
+            backupIndexer.loadIndex(backupDir.absolutePath)
         } else {
             null
         }

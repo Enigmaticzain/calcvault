@@ -37,6 +37,7 @@ import com.calcvault.messaging.AppendOnlyMessageDB
 import com.calcvault.messaging.MessageRecord
 import com.calcvault.messaging.importer.InstagramNativeImporter
 import com.calcvault.network.NetworkMessageEngine
+import com.calcvault.network.privacy.PrivacyFeature
 import com.calcvault.storage.MediaChunkManager
 import com.calcvault.storage.USBStorageEngine
 import com.calcvault.storage.provider.StorageManager
@@ -44,6 +45,7 @@ import com.calcvault.ui.ambient.AmbientAnimationView
 import com.calcvault.ui.main.MainVaultActivity
 import com.calcvault.ui.media.SecureMediaOpenHelper
 import com.calcvault.ui.media.SnapCameraActivity
+import com.calcvault.utils.PairedUserIdentity
 import com.calcvault.utils.SessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -63,7 +65,6 @@ import java.io.File
  */
 import com.calcvault.chat.*
 import com.calcvault.emotional.themes.DoraemonMessageBridge
-import com.calcvault.p2p.PeerManager
 
 class ChatActivity : AppCompatActivity() {
 
@@ -74,7 +75,6 @@ class ChatActivity : AppCompatActivity() {
     private lateinit var storageEngine: USBStorageEngine
     private lateinit var mediaManager: MediaChunkManager
     private lateinit var messageAdapter: MessageAdapter
-    private lateinit var peerManager: PeerManager
     private var rootLayout: FrameLayout? = null
     private var backgroundEngine: BackgroundCharacterInteractionEngine? = null
 
@@ -85,9 +85,8 @@ class ChatActivity : AppCompatActivity() {
     private lateinit var backButton: Button
 
     // User IDs
-    private var localUserId = "zain"
+    private var localUserId = PairedUserIdentity.USER_A
     private var partnerUserId = "sanu"
-    private var partnerIpAddress: String? = null
     private var pendingSnapUri: Uri? = null
 
     companion object {
@@ -112,19 +111,24 @@ class ChatActivity : AppCompatActivity() {
         storageEngine = USBStorageEngine.getInstance(this)
         messageDB = AppendOnlyMessageDB(storageEngine)
         mediaManager = MediaChunkManager(storageEngine, messageDB)
-        peerManager = PeerManager()
 
-        localUserId = SessionManager.localUserId.ifBlank { "zain" }
+        localUserId = SessionManager.localUserId.ifBlank { PairedUserIdentity.USER_A }
         partnerUserId = SessionManager.partnerUserId.ifBlank {
-            if (localUserId == "zain") "sanu" else "zain"
+            PairedUserIdentity.partnerId(localUserId) ?: PairedUserIdentity.USER_B
         }
 
         networkEngine = NetworkMessageEngine(this, messageDB, storageEngine)
+        networkEngine.onPrivacyRouteUnavailable = { explanation ->
+            runOnUiThread {
+                Toast.makeText(this, explanation, Toast.LENGTH_LONG).show()
+            }
+        }
         runCatching {
             networkEngine.initialize(
                 localUserId,
                 partnerUserId,
-                SessionManager.signalingUrl.ifBlank { DEFAULT_SIGNALING }
+                SessionManager.signalingUrl.ifBlank { DEFAULT_SIGNALING },
+                feature = PrivacyFeature.MESSAGING
             )
         }.onFailure { error ->
             Log.e(TAG, "Chat network engine failed to initialize; continuing offline", error)
@@ -467,13 +471,6 @@ class ChatActivity : AppCompatActivity() {
             }
         }
 
-        networkEngine.onPresenceUpdate = { userId, status ->
-            if (userId == partnerUserId && status == "ONLINE") {
-                partnerIpAddress = networkEngine.partnerIpAddress
-            } else if (userId == partnerUserId && status == "OFFLINE") {
-                partnerIpAddress = null
-            }
-        }
     }
 
     private fun loadMessages() {
@@ -670,30 +667,23 @@ class ChatActivity : AppCompatActivity() {
 
             messageDB.saveMessage(message)
 
-            // Try P2P delivery if IP is known
-            var p2pSent = false
-            partnerIpAddress?.let { ip ->
-                p2pSent = peerManager.sendMessage(
-                    peerAddress = ip,
-                    messageText = content,
-                    senderId = localUserId,
-                    recipientId = partnerUserId
-                )
-            }
-
-            // Fallback to relay if P2P failed
-            if (!p2pSent) {
-                networkEngine.sendEncryptedPayload(
-                    id = message.id,
-                    data = content.toByteArray(Charsets.UTF_8),
-                    type = AppendOnlyMessageDB.MSG_TEXT
-                )
-            } else {
-                messageDB.markDelivered(message.id)
-            }
+            // Do not silently use direct HTTP or relay delivery. NetworkMessageEngine
+            // fails closed until a verified E2EE envelope and approved route exist.
+            val sent = networkEngine.sendEncryptedPayload(
+                id = message.id,
+                data = content.toByteArray(Charsets.UTF_8),
+                type = AppendOnlyMessageDB.MSG_TEXT
+            )
 
             withContext(Dispatchers.Main) {
                 messageAdapter.addMessage(message)
+                if (!sent) {
+                    Toast.makeText(
+                        this@ChatActivity,
+                        "Not sent. The message remains on this device; verified end-to-end encryption and an approved route are unavailable.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
                 messageRecyclerView.scrollToPosition((messageAdapter.itemCount - 1).coerceAtLeast(0))
 
                 // Queue message in Doraemon theme if active
@@ -766,7 +756,7 @@ class ChatActivity : AppCompatActivity() {
             )
 
             messageDB.saveMessage(message)
-            networkEngine.sendEncryptedPayload(
+            val sent = networkEngine.sendEncryptedPayload(
                 id = message.id,
                 data = "[movie_sync_request]".toByteArray(Charsets.UTF_8),
                 type = AppendOnlyMessageDB.MSG_VIDEO
@@ -775,7 +765,11 @@ class ChatActivity : AppCompatActivity() {
             withContext(Dispatchers.Main) {
                 messageAdapter.addMessage(message)
                 messageRecyclerView.scrollToPosition((messageAdapter.itemCount - 1).coerceAtLeast(0))
-                Toast.makeText(this@ChatActivity, "Watch party initiated!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this@ChatActivity,
+                    if (sent) "Watch invitation sent" else "Watch invitation not sent: approved signaling route is unavailable.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
@@ -869,16 +863,22 @@ class ChatActivity : AppCompatActivity() {
             )
 
             messageDB.saveMessage(message)
-            networkEngine.sendEncryptedPayload(
+            val sent = networkEngine.sendMediaPayload(
                 id = message.id,
                 data = uri.toString().toByteArray(Charsets.UTF_8),
-                type = type
+                type = type,
+                mimeType = mimeType,
+                fileName = label
             )
 
             withContext(Dispatchers.Main) {
                 messageAdapter.addMessage(message)
                 messageRecyclerView.scrollToPosition((messageAdapter.itemCount - 1).coerceAtLeast(0))
-                Toast.makeText(this@ChatActivity, "$label sent!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this@ChatActivity,
+                    if (sent) "$label sent" else "$label not sent. No encrypted file-transfer route is available; the URI stays local.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
@@ -903,17 +903,28 @@ class ChatActivity : AppCompatActivity() {
 
             messageDB.saveMessage(message)
             
-            // Read voice file and send encrypted
+            // Read locally, then route through the File Sharing gate. No network media transport is enabled.
             try {
                 val inputStream = contentResolver.openInputStream(voiceUri)
                 val voiceData = inputStream?.readBytes() ?: byteArrayOf()
                 inputStream?.close()
                 
-                networkEngine.sendEncryptedPayload(
+                val sent = networkEngine.sendMediaPayload(
                     id = message.id,
                     data = voiceData,
-                    type = AppendOnlyMessageDB.MSG_AUDIO
+                    type = AppendOnlyMessageDB.MSG_AUDIO,
+                    mimeType = "audio/m4a",
+                    fileName = "Voice message"
                 )
+                if (!sent) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@ChatActivity,
+                            "Voice message not sent. Verified end-to-end encryption and an approved route are unavailable.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error sending voice message: ${e.message}")
             }
@@ -921,7 +932,7 @@ class ChatActivity : AppCompatActivity() {
             withContext(Dispatchers.Main) {
                 messageAdapter.addMessage(message)
                 messageRecyclerView.scrollToPosition((messageAdapter.itemCount - 1).coerceAtLeast(0))
-                Toast.makeText(this@ChatActivity, "Voice message sent!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@ChatActivity, "Voice message is stored locally but was not sent.", Toast.LENGTH_LONG).show()
             }
         }
     }

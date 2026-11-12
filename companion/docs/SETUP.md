@@ -18,9 +18,9 @@ Open that URL in browser to access the companion UI.
 
 Phone app must provide a WebSocket bridge endpoint (`/bridge`) and implement protocol in `docs/PROTOCOL.md`.
 
-Recommended phone bridge binding:
+Supported phone bridge binding:
 - USB mode: phone listens on `127.0.0.1:37111`, PC uses `adb forward`
-- LAN mode (optional): phone exposes `ws://<phone-ip>:37111/bridge` on trusted local network only
+- LAN mode is currently rejected because no per-feature File Sharing direct-route consent is integrated.
 
 ## 3) USB workflow (primary)
 
@@ -33,15 +33,9 @@ Recommended phone bridge binding:
 4. Scan QR or enter pairing code on phone.
 5. Approve operations from phone prompts.
 
-## 4) LAN workflow (optional)
+## 4) LAN workflow
 
-1. Ensure phone and PC are on same trusted Wi-Fi.
-2. Phone app shows bridge URL.
-3. In companion UI:
-- Enter URL
-- Connect Network
-- Start Pairing
-- Approve on phone
+Direct LAN file transfer is unavailable and fails closed. The desktop UI disables the network connection controls, the backend rejects network transport requests, and the Android bridge binds only to loopback for USB/ADB. Use USB local-only or wait for a feature-approved route.
 
 ## 5) Validation run
 
@@ -62,7 +56,7 @@ This starts a mock phone bridge and validates:
 - `CV_PORT` companion local port (default `43831`)
 - `CV_BIND_HOST` local bind host (default `127.0.0.1`)
 - `CV_PHONE_BRIDGE_PORT` phone loopback port for USB forward (default `37111`)
-- `CV_ENABLE_NETWORK_TRANSPORT=true|false`
+- Direct LAN transport has no environment override and remains disabled.
 - `CV_DISABLE_USB_TRANSPORT=true|false`
 - `CV_SESSION_TTL_MS` (default `900000`)
 - `CV_OPERATION_TIMEOUT_MS` (default `60000`)
@@ -73,5 +67,5 @@ This starts a mock phone bridge and validates:
 - Pairing and operation approval prompt on phone for every privileged action.
 - Store desktop trust decisions only with explicit user consent.
 - Rotate session keys on reconnect and lock-screen transitions.
-- Prefer `wss://` for LAN mode.
+- Do not re-enable LAN without per-feature route integration, explicit IP disclosure/consent, and device validation.
 - Add Android-side certificate pinning if using TLS on LAN.

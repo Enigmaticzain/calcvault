@@ -3,16 +3,60 @@
   "version": "1.0.0",
   "description": "Local-first secure desktop/web companion for CalcVault Android",
   "type": "module",
-  "main": "src/main.js",
+  "main": "desktop/main.js",
   "scripts": {
     "start": "node src/main.js",
     "dev": "NODE_ENV=development node src/main.js",
-    "validate": "node tests/run-validation.js"
+    "desktop": "electron .",
+    "build:ubuntu": "electron-builder --linux deb --x64 --publish never",
+    "validate": "node tests/run-validation.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "build": {
+    "appId": "org.calcvault.companion",
+    "productName": "CalcVault Companion",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop/**/*",
+      "src/**/*",
+      "web/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Utility",
+      "synopsis": "Local-only CalcVault USB companion",
+      "description": "Personal local companion for CalcVault USB backup, restore, and file operations.",
+      "icon": "assets/calcvault-companion.png",
+      "artifactName": "CalcVault-Companion-${version}-${arch}.${ext}"
+    },
+    "deb": {
+      "priority": "optional"
+    }
   },
   "dependencies": {
     "busboy": "^1.6.0",
     "express": "^4.21.2",
     "qrcode": "^1.5.4",
     "ws": "^8.18.0"
+  },
+  "overrides": {
+    "qs": "^6.16.2",
+    "minimatch": "^11.0.1"
+  },
+  "devDependencies": {
+    "electron": "^45.3.1",
+    "electron-builder": "^26.18.0"
   }
 }

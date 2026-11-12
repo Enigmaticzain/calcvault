@@ -1,11 +1,13 @@
 # CalcVault Companion (Desktop/Web)
 
+For the Ubuntu desktop package build and its local-only security boundary, see [UBUNTU_DESKTOP.md](UBUNTU_DESKTOP.md).
+
 Local-first secure companion for CalcVault Android app.
 
 ## Features
 
 - Secure pairing (QR or code), device-bound session
-- USB-first connection with optional LAN mode
+- USB/ADB loopback connection; direct LAN is disabled until an approved File Sharing route is integrated
 - Backup to PC as encrypted versioned snapshot
 - Restore from encrypted backup with integrity validation
 - File transfer PC <-> phone with phone-authorized operations
@@ -35,7 +37,7 @@ npm run validate
 - `src/services/bridge-manager.js` encrypted session + operation engine
 - `src/services/backup-store.js` backup persistence + integrity
 - `src/transport/usb.js` ADB USB bridge transport
-- `src/transport/network.js` optional LAN transport
+- `src/transport/network.js` fail-closed direct LAN adapter
 - `src/security/crypto.js` pairing/session crypto primitives
 - `web/` dashboard + backup manager + file manager + connection panel
 - `docs/PROTOCOL.md` phone/PC communication protocol

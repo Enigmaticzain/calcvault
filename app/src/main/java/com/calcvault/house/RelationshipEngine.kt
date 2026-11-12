@@ -45,7 +45,8 @@ data class RelationshipState(
 
 class RelationshipEngine {
 
-    var state = RelationshipState(); private set
+    var state = RelationshipState()
+    private set
     private var listeners = mutableListOf<(RelationshipState, RelationshipState) -> Unit>()
 
     companion object {

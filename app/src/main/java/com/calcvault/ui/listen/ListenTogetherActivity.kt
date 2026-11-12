@@ -1,9 +1,8 @@
 package com.calcvault.ui.listen
 
-import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import androidx.appcompat.app.AlertDialog
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.MediaMetadataRetriever
@@ -22,13 +21,9 @@ import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.calcvault.call.SocketCallEngine
 import com.calcvault.emotional.themes.ThemeApplicator
 import com.calcvault.listen.ListenDriftPolicy
-import com.calcvault.listen.ListenTogetherCrypto
 import com.calcvault.listen.LocalMusicTrack
 import com.calcvault.listen.MusicLibraryScanner
 import com.calcvault.listen.MusicSession
@@ -39,6 +34,7 @@ import com.calcvault.messaging.AppendOnlyMessageDB
 import com.calcvault.network.NetworkMessageEngine
 import com.calcvault.storage.USBStorageEngine
 import com.calcvault.ui.common.GlassUi
+import com.calcvault.utils.PairedUserIdentity
 import com.calcvault.utils.SessionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -54,16 +50,14 @@ import kotlin.math.abs
  * ListenTogetherActivity
  *
  * Synchronized local music playback between two devices with shared controls.
- * Music data is never transferred, only encrypted control metadata is exchanged.
+ * Music bytes remain local. Control metadata uses consent-gated HTTPS signaling, not E2EE.
  */
 class ListenTogetherActivity : AppCompatActivity() {
 
     companion object {
-        private const val DEFAULT_SIGNALING = "https://calcvault-signal.onrender.com"
         private const val SIGNAL_INTERVAL_MS = 850L
         private const val UI_REFRESH_INTERVAL_MS = 250L
         private const val PING_INTERVAL_MS = 6_000L
-        private const val REQ_RECORD_AUDIO = 1201
         private const val REQUEST_CODE_FILE_PICKER = 1202
 
         private const val SIG_INVITE = "listen_invite"
@@ -113,7 +107,7 @@ class ListenTogetherActivity : AppCompatActivity() {
     private val trackLabels = mutableListOf<String>()
     private lateinit var trackAdapter: ArrayAdapter<String>
 
-    private var localUserId = "zain"
+    private var localUserId = PairedUserIdentity.USER_A
     private var partnerUserId = "sanu"
     private var role = SyncRole.HOST
 
@@ -137,32 +131,23 @@ class ListenTogetherActivity : AppCompatActivity() {
     private var uiJob: Job? = null
     private var pingJob: Job? = null
 
-    private var voiceEngine: SocketCallEngine? = null
     private var voiceActive = false
-    private var voiceMuted = false
-    private var pendingVoiceStart = false
+    private val signalingInitialized = false
     private var musicVolume = 0.85f
-    private var voiceVolume = 1.0f
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        localUserId = SessionManager.localUserId.ifBlank { "zain" }
+        localUserId = SessionManager.localUserId.ifBlank { PairedUserIdentity.USER_A }
         partnerUserId = SessionManager.partnerUserId.ifBlank {
-            if (localUserId == "zain") "sanu" else "zain"
+            PairedUserIdentity.partnerId(localUserId) ?: PairedUserIdentity.USER_B
         }
 
         storageEngine = USBStorageEngine.getInstance(this)
         messageDB = AppendOnlyMessageDB(storageEngine)
         networkEngine = NetworkMessageEngine(this, messageDB, storageEngine)
-        networkEngine.initialize(
-            localUserId,
-            partnerUserId,
-            SessionManager.signalingUrl.ifBlank { DEFAULT_SIGNALING }
-        )
-
         buildUi()
         GlassUi.applyThemeChrome(this)
         observeNetwork()
@@ -189,6 +174,29 @@ class ListenTogetherActivity : AppCompatActivity() {
 
         tvPartner.text = "Listening with ${partnerDisplayName()}"
         refreshRoleUi(lockRole = incoming)
+        promptListenSignalingConsent()
+    }
+
+    private fun promptListenSignalingConsent() {
+        tvStatus.text =
+            "Listen Together network sync is unavailable: no authenticated, ciphertext-only signaling route exists. Playback remains local."
+        AlertDialog.Builder(this)
+            .setTitle("Listen Together sync unavailable")
+            .setMessage(
+                "No network route is approved for Listen Together. HTTPS signaling, saved consent, or a one-time " +
+                    "override would expose control data without authenticated peer identity and end-to-end encryption. " +
+                    "No signal or invitation will be sent, and no less-private fallback will be attempted. " +
+                    "You can continue listening locally."
+            )
+            .setPositiveButton("Continue locally", null)
+            .show()
+    }
+
+    private fun processPendingInviteIfReady() {
+        if (!signalingInitialized || trackItems.isEmpty()) return
+        val pending = pendingInvitePayload ?: return
+        pendingInvitePayload = null
+        handleIncomingInvitePayload(pending)
     }
 
     private fun buildUi() {
@@ -360,13 +368,8 @@ class ListenTogetherActivity : AppCompatActivity() {
         root.addView(btnTalk)
 
         switchMute = Switch(this).apply {
-            text = "Mute Mic"
-            setOnCheckedChangeListener { _, checked ->
-                if (voiceMuted != checked) {
-                    voiceMuted = checked
-                    voiceEngine?.toggleMute()
-                }
-            }
+            text = "Mute Mic (voice unavailable)"
+            isEnabled = false
         }
         root.addView(switchMute)
 
@@ -386,13 +389,8 @@ class ListenTogetherActivity : AppCompatActivity() {
         root.addView(sliderLabel("Voice Volume"))
         seekVoiceVolume = SeekBar(this).apply {
             max = 100
-            progress = (voiceVolume * 100).toInt()
-            setOnSeekBarChangeListener(
-                simpleSeekListener { progress ->
-                    voiceVolume = progress / 100f
-                    voiceEngine?.setRemotePlaybackVolume(voiceVolume)
-                }
-            )
+            progress = 100
+            isEnabled = false
         }
         root.addView(seekVoiceVolume)
     }
@@ -442,10 +440,7 @@ class ListenTogetherActivity : AppCompatActivity() {
                     tvTrackMeta.text = "Put the same song on both devices first"
                 }
 
-                pendingInvitePayload?.let {
-                    pendingInvitePayload = null
-                    handleIncomingInvitePayload(it)
-                }
+                processPendingInviteIfReady()
             }
         }
     }
@@ -631,7 +626,7 @@ class ListenTogetherActivity : AppCompatActivity() {
         val remoteTrack = parseTrack(payload.optJSONObject("track"))
         val sessionId = payload.optString("sessionId")
         val host = payload.optString("host").ifBlank { partnerUserId }
-        if (remoteTrack == null || sessionId.isBlank()) {
+        if (remoteTrack == null || sessionId.isBlank() || host != partnerUserId) {
             tvStatus.text = "Invite payload invalid"
             lifecycleScope.launch(Dispatchers.IO) {
                 sendSignal(
@@ -707,9 +702,7 @@ class ListenTogetherActivity : AppCompatActivity() {
         val from = signal.optString("from").ifBlank { partnerUserId }
         if (from != partnerUserId) return
 
-        val payload = ListenTogetherCrypto.unwrap(signal.optJSONObject("payload"))
-            ?: signal.optJSONObject("payload")
-            ?: JSONObject()
+        val payload = signal.optJSONObject("payload") ?: JSONObject()
 
         when (type) {
             SIG_INVITE -> handleIncomingInvitePayload(payload)
@@ -732,7 +725,8 @@ class ListenTogetherActivity : AppCompatActivity() {
             }
             SIG_VOICE_OFFER -> onVoiceOffer(payload)
             SIG_VOICE_ACCEPT -> {
-                tvStatus.text = "Voice channel accepted"
+                voiceActive = false
+                tvStatus.text = "A legacy voice signal was received, but no raw-socket connection was made."
             }
             SIG_VOICE_END -> stopVoiceLocal(notifyRemote = false)
         }
@@ -1206,164 +1200,40 @@ class ListenTogetherActivity : AppCompatActivity() {
     }
 
     private fun onTalkClicked() {
-        if (session == null) {
-            tvStatus.text = "Start or join a listen session first"
-            return
-        }
-
-        if (voiceActive) {
-            stopVoiceLocal(notifyRemote = true)
-            return
-        }
-
-        if (!hasRecordAudioPermission()) {
-            pendingVoiceStart = true
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQ_RECORD_AUDIO)
-            return
-        }
-
-        if (role == SyncRole.HOST) {
-            startVoiceAsHost(sendOffer = true)
-        } else {
-            lifecycleScope.launch(Dispatchers.IO) {
-                val sent = sendSignal(
-                    SIG_VOICE_REQUEST,
-                    JSONObject().apply {
-                        put("sessionId", session?.sessionId)
-                        put("sentAtMs", System.currentTimeMillis())
-                    }
-                )
-                launch(Dispatchers.Main) {
-                    tvStatus.text = if (sent) "Voice request sent to host" else "Failed to send voice request"
-                }
-            }
-        }
+        voiceActive = false
+        btnTalk.text = "Voice unavailable"
+        tvStatus.text = "Listen Together voice is unavailable. Legacy direct-IP TCP calling is disabled; no network route was attempted."
     }
 
-    private fun startVoiceAsHost(sendOffer: Boolean) {
-        if (voiceActive) return
-
-        if (session == null) {
-            tvStatus.text = "Start a listen session before voice"
-            return
-        }
-
-        val engine = ensureVoiceEngine()
-        engine.startCall()
-        voiceActive = true
-        btnTalk.text = "Stop Talk"
-
-        if (!sendOffer) return
-
-        val callerIp = engine.getLocalIp()
-        lifecycleScope.launch(Dispatchers.IO) {
-            sendSignal(
-                SIG_VOICE_OFFER,
-                JSONObject().apply {
-                    put("sessionId", session?.sessionId)
-                    put("callerIp", callerIp)
-                    put("port", SocketCallEngine.callPort())
-                    put("sentAtMs", System.currentTimeMillis())
-                }
-            )
-        }
-
-        tvStatus.text = "Voice offer sent"
+    private fun startVoiceAsHost(@Suppress("UNUSED_PARAMETER") sendOffer: Boolean) {
+        onTalkClicked()
     }
 
     private fun onVoiceOffer(payload: JSONObject) {
-        if (!isCurrentSession(payload)) return
-        if (voiceActive) return
-        if (!hasRecordAudioPermission()) {
-            tvStatus.text = "Voice offer received but microphone permission is missing"
-            return
-        }
-
-        val callerIp = payload.optString("callerIp")
-        if (callerIp.isBlank()) return
-
-        val engine = ensureVoiceEngine()
-        engine.answerCall(callerIp)
-        voiceActive = true
-        btnTalk.text = "Stop Talk"
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            sendSignal(
-                SIG_VOICE_ACCEPT,
-                JSONObject().apply {
-                    put("sessionId", session?.sessionId)
-                    put("sentAtMs", System.currentTimeMillis())
-                }
-            )
-        }
-
-        tvStatus.text = "Voice channel connecting..."
+        if (isCurrentSession(payload)) onTalkClicked()
     }
 
-    private fun stopVoiceLocal(notifyRemote: Boolean) {
-        voiceEngine?.endCall()
+    private fun stopVoiceLocal(@Suppress("UNUSED_PARAMETER") notifyRemote: Boolean) {
         voiceActive = false
-        btnTalk.text = "Start Talk"
-
-        if (notifyRemote) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                sendSignal(
-                    SIG_VOICE_END,
-                    JSONObject().apply {
-                        put("sessionId", session?.sessionId)
-                        put("sentAtMs", System.currentTimeMillis())
-                    }
-                )
-            }
-        }
-    }
-
-    private fun ensureVoiceEngine(): SocketCallEngine {
-        val existing = voiceEngine
-        if (existing != null) return existing
-
-        val created = SocketCallEngine(this).apply {
-            suppressInternalLogging = true
-            setRemotePlaybackVolume(voiceVolume)
-            onStateChanged = { state ->
-                runOnUiThread {
-                    when (state) {
-                        SocketCallEngine.ConnectionState.CONNECTING -> tvStatus.text = "Voice connecting..."
-                        SocketCallEngine.ConnectionState.CONNECTED -> tvStatus.text = "Voice connected"
-                        SocketCallEngine.ConnectionState.DISCONNECTED -> {
-                            voiceActive = false
-                            btnTalk.text = "Start Talk"
-                            tvStatus.text = "Voice disconnected"
-                        }
-                        SocketCallEngine.ConnectionState.FAILED -> {
-                            voiceActive = false
-                            btnTalk.text = "Start Talk"
-                            tvStatus.text = "Voice failed"
-                        }
-                        SocketCallEngine.ConnectionState.INIT -> Unit
-                    }
-                }
-            }
-            onError = { err ->
-                runOnUiThread {
-                    tvStatus.text = "Voice error: $err"
-                }
-            }
-        }
-
-        voiceEngine = created
-        return created
+        if (::btnTalk.isInitialized) btnTalk.text = "Start Talk"
     }
 
     private suspend fun sendSignal(type: String, payload: JSONObject): Boolean {
-        val wrapped = ListenTogetherCrypto.wrap(payload)
-        val extras = JSONObject().apply {
-            put("payload", wrapped)
-            payload.optString("sessionId").takeIf { it.isNotBlank() }?.let {
-                put("sessionId", it)
+        if (!signalingInitialized) {
+            runOnUiThread {
+                tvStatus.text = "Not sent: no authenticated ciphertext-only Listen Together route is available. Playback remains local."
             }
+            return false
         }
-        return networkEngine.sendControlSignal(type, extras)
+        val extras = JSONObject().apply {
+            put("payload", JSONObject(payload.toString()))
+            payload.optString("sessionId").takeIf { it.isNotBlank() }?.let { put("sessionId", it) }
+        }
+        return networkEngine.sendControlSignal(
+            type,
+            extras,
+            oneTimeListenConsent = true
+        )
     }
 
     private fun isCurrentSession(payload: JSONObject): Boolean {
@@ -1431,29 +1301,29 @@ class ListenTogetherActivity : AppCompatActivity() {
     private fun trackToJson(track: TrackFingerprint): JSONObject {
         return JSONObject().apply {
             put("trackId", track.trackId)
-            put("fileName", track.fileName)
             put("sha256", track.sha256)
             put("sizeBytes", track.sizeBytes)
             put("durationMs", track.durationMs)
-            put("path", track.path)
         }
     }
 
     private fun parseTrack(json: JSONObject?): TrackFingerprint? {
         if (json == null) return null
-        val trackId = json.optString("trackId").ifBlank { json.optString("sha256") }
-        val sha = json.optString("sha256").ifBlank { trackId }
+        val sha = json.optString("sha256").lowercase(java.util.Locale.US)
+        val trackId = json.optString("trackId").ifBlank { sha }
         val size = json.optLong("sizeBytes", -1L)
         val duration = json.optLong("durationMs", -1L)
-        if (trackId.isBlank() || sha.isBlank() || size < 0L || duration < 0L) return null
+        if (!sha.matches(Regex("[a-f0-9]{64}")) || trackId != sha || size < 0L ||
+            duration !in 0L..86_400_000L
+        ) return null
 
         return TrackFingerprint(
-            trackId = trackId,
-            fileName = json.optString("fileName", "unknown"),
+            trackId = sha,
+            fileName = "",
             sha256 = sha,
             sizeBytes = size,
             durationMs = duration,
-            path = json.optString("path", "")
+            path = ""
         )
     }
 
@@ -1504,24 +1374,6 @@ class ListenTogetherActivity : AppCompatActivity() {
         val minutes = totalSeconds / 60L
         val seconds = totalSeconds % 60L
         return String.format("%d:%02d", minutes, seconds)
-    }
-
-    private fun hasRecordAudioPermission(): Boolean {
-        return ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQ_RECORD_AUDIO) {
-            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
-            if (granted && pendingVoiceStart) {
-                pendingVoiceStart = false
-                onTalkClicked()
-            } else if (!granted) {
-                pendingVoiceStart = false
-                toast("Microphone permission is required for talk mode")
-            }
-        }
     }
 
     private fun releasePlayer() {

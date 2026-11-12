@@ -10,6 +10,8 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.calcvault.call.CallForegroundService
+import com.calcvault.ui.call.CallActivity
 import com.calcvault.ui.calculator.CalculatorActivity
 
 /**
@@ -98,27 +100,45 @@ class CVNotificationManager(private val context: Context) {
         notifManager.notify(ID_INCOMING_CALL, builder.build())
     }
 
-    fun showOngoingCall(): Notification {
+    fun showOngoingCall(callId: String, isVideo: Boolean): Notification {
+        val resumeIntent = Intent(context, CallActivity::class.java).apply {
+            action = CallForegroundService.ACTION_RESUME_CALL
+            putExtra(CallForegroundService.EXTRA_CALL_ID, callId)
+            putExtra(CallForegroundService.EXTRA_VIDEO, isVideo)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
         val tapIntent = PendingIntent.getActivity(
             context,
-            0,
-            Intent(context, CalculatorActivity::class.java),
+            ID_ONGOING_CALL,
+            resumeIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val endIntent = Intent(context, CallActivity::class.java).apply {
+            action = CallForegroundService.ACTION_END_CALL
+            putExtra(CallForegroundService.EXTRA_CALL_ID, callId)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        val endPendingIntent = PendingIntent.getActivity(
+            context,
+            ID_ONGOING_CALL + 1,
+            endIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_CALLS)
             .setSmallIcon(android.R.drawable.ic_menu_call)
             .setContentTitle("Call in progress")
-            .setContentText("•")
+            .setContentText(if (isVideo) "Video call" else "Voice call")
             .setContentIntent(tapIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "End", endPendingIntent)
             .setOngoing(true)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setVisibility(NotificationCompat.VISIBILITY_SECRET)
             .build()
 
-        if (canPostNotifications()) {
-            notifManager.notify(ID_ONGOING_CALL, notification)
-        }
+        // The foreground service publishes this notification under its own ID. Posting
+        // it here too creates a duplicate call notification and a stale second control.
         return notification
     }
 

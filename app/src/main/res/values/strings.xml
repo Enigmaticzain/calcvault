@@ -58,6 +58,8 @@
     <string name="button_decline">Decline</string>
     <string name="button_answer">Answer</string>
     <string name="button_mute">Mute</string>
+    <string name="button_camera_on">Turn camera on</string>
+    <string name="button_camera_off">Turn camera off</string>
     <string name="button_flash">Flash</string>
     <string name="button_speaker">Speaker</string>
     <string name="button_record">Record</string>

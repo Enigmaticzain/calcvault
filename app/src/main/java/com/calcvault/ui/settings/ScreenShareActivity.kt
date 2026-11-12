@@ -21,6 +21,11 @@ import com.calcvault.databinding.ActivityScreenshareBinding
 import com.calcvault.emotional.themes.ThemeApplicator
 import com.calcvault.messaging.AppendOnlyMessageDB
 import com.calcvault.network.NetworkMessageEngine
+import com.calcvault.network.privacy.ActivePrivacySessionRegistry
+import com.calcvault.network.privacy.PrivacyControlStore
+import com.calcvault.network.privacy.PrivacyFeature
+import com.calcvault.network.webrtc.WebRtcIcePolicy
+import com.calcvault.network.webrtc.WebRtcIceSettingsStore
 import com.calcvault.storage.USBStorageEngine
 import com.calcvault.utils.SessionManager
 import org.webrtc.EglBase
@@ -50,6 +55,8 @@ class ScreenShareActivity : AppCompatActivity() {
     private var partnerId: String = ""
     private var sessionId: String = ""
     private var shareState: ScreenShareState = ScreenShareState.REQUESTED
+    private var privacyRouteError: String? = null
+    private var privacySessionId: String? = null
     private var watchIndicator = WatchIndicator(
         isActive = false,
         position = Point(60, 160),
@@ -80,15 +87,47 @@ class ScreenShareActivity : AppCompatActivity() {
         val storageEngine = USBStorageEngine.getInstance(this)
         val messageDB = AppendOnlyMessageDB(storageEngine)
         networkEngine = NetworkMessageEngine(this, messageDB, storageEngine)
+        networkEngine.onPrivacyRouteUnavailable = { explanation ->
+            privacyRouteError = explanation
+            runOnUiThread { binding.statusText.text = explanation }
+        }
         networkEngine.initialize(
             SessionManager.localUserId,
             partnerId,
-            SessionManager.signalingUrl.ifBlank { DEFAULT_SIGNALING }
+            SessionManager.signalingUrl.ifBlank { DEFAULT_SIGNALING },
+            feature = PrivacyFeature.SCREEN_SHARING
         )
 
-        screenShareEngine = ScreenShareEngine(this, networkEngine, eglBase.eglBaseContext)
+        val privacyMode = PrivacyControlStore(this).mode(PrivacyFeature.SCREEN_SHARING)
+        val iceSettings = WebRtcIceSettingsStore.loadOrEmpty(this)
+        screenShareEngine = ScreenShareEngine(
+            this,
+            networkEngine,
+            eglBase.eglBaseContext,
+            privacyMode,
+            iceSettings
+        )
         setupViews()
         setupEngineListeners()
+        val iceRoute = WebRtcIcePolicy.plan(privacyMode, iceSettings)
+        val signalingError = privacyRouteError
+        binding.statusText.text = signalingError ?: iceRoute.explanation
+        if (signalingError != null || !iceRoute.allowed) {
+            binding.statusText.text = signalingError ?: iceRoute.explanation
+            return
+        }
+
+        privacySessionId = "screenshare:${sessionId.ifBlank { System.currentTimeMillis().toString() }}:$partnerId"
+        ActivePrivacySessionRegistry.register(
+            id = privacySessionId!!,
+            peerId = partnerId,
+            feature = PrivacyFeature.SCREEN_SHARING.label
+        ) {
+            runOnUiThread {
+                screenShareEngine.endSession(notifyPeer = false)
+                finish()
+            }
+        }
 
         if (role == ROLE_SHARER) {
             binding.statusText.text = "Waiting for capture permission..."
@@ -312,7 +351,7 @@ class ScreenShareActivity : AppCompatActivity() {
 
         if (resultCode == Activity.RESULT_OK && data != null) {
             shareState = ScreenShareState.ACTIVE
-            binding.statusText.text = "Starting secure Live Assist..."
+            binding.statusText.text = "Starting screen share; peer identity is not verified by this app"
             screenShareEngine.initSharer(
                 partnerId = partnerId,
                 mediaProjectionIntent = data,
@@ -336,11 +375,18 @@ class ScreenShareActivity : AppCompatActivity() {
         ) {
             // Safety-first policy: no hidden background sharing.
             screenShareEngine.endSession(notifyPeer = true)
+            unregisterPrivacySession()
         }
+    }
+
+    private fun unregisterPrivacySession() {
+        ActivePrivacySessionRegistry.unregister(privacySessionId)
+        privacySessionId = null
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        unregisterPrivacySession()
         screenShareEngine.release()
         binding.localVideoView.release()
         binding.remoteVideoView.release()

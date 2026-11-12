@@ -88,7 +88,8 @@ class USBStorageProvider(
         }
 
         if (success) {
-            keyToIdMap[key] = recordId
+            val replacedId = keyToIdMap.put(key, recordId)
+            if (replacedId != null) idToKeyMap.remove(replacedId)
             idToKeyMap[recordId] = key
             // Update container seal after every write
             seal.updateSeal(containerFile)
@@ -99,21 +100,32 @@ class USBStorageProvider(
     }
 
     override fun readData(key: String): ByteArray? {
+        if (key.startsWith("tombstone/")) return null
         val recordId = keyToIdMap[key] ?: return null
         return engine.readRecord(recordId)
     }
 
     override fun deleteData(key: String): Boolean {
-        // USB storage is append-only — write tombstone
+        val existingId = keyToIdMap[key] ?: return true
+        if (key.startsWith("tombstone/")) return false
+
+        // USB storage is append-only. Persist an encrypted tombstone, then remove the key
+        // from the active in-memory index so the deleted value cannot be read this session.
         val tombstoneData = "DELETED:$key".toByteArray()
-        return writeData("tombstone/$key", tombstoneData)
+        val tombstoneKey = "tombstone/${CryptoUtils.sha256hex(key.toByteArray()).take(32)}_${generateId()}"
+        val success = writeData(tombstoneKey, tombstoneData)
+        if (success) {
+            keyToIdMap.remove(key)
+            idToKeyMap.remove(existingId)
+        }
+        return success
     }
 
     override fun listKeys(prefix: String): List<String> {
-        return keyToIdMap.keys.filter { it.startsWith(prefix) }.sorted()
+        return keyToIdMap.keys.filter { !it.startsWith("tombstone/") && it.startsWith(prefix) }.sorted()
     }
 
-    override fun exists(key: String): Boolean = keyToIdMap.containsKey(key)
+    override fun exists(key: String): Boolean = !key.startsWith("tombstone/") && keyToIdMap.containsKey(key)
 
     // ── Private ────────────────────────────────────────────────────────────
 
@@ -134,14 +146,24 @@ class USBStorageProvider(
 
     private fun rebuildIndex(skipIds: Set<Long>) {
         keyToIdMap.clear(); idToKeyMap.clear()
-        // Read encrypted index from seal's index file
-        val entries = seal.readIndex(derivedIndexKey())
+        // Replay the sealed append-only index in record order so replacements and
+        // tombstones survive detach/restart instead of resurrecting deleted keys.
+        val activeKeys = linkedMapOf<String, Long>()
+        val entries = seal.readIndex(derivedIndexKey()).toSortedMap()
         for ((id, entry) in entries) {
             if (id in skipIds) continue
-            val keyStr = entry.key
-            idToKeyMap[id] = keyStr
-            keyToIdMap[keyStr] = id
             if (id >= nextId) nextId = id + 1
+            val key = entry.key
+            if (key.startsWith("tombstone/")) {
+                val record = engine.readRecord(id)?.toString(Charsets.UTF_8) ?: continue
+                if (record.startsWith("DELETED:")) activeKeys.remove(record.removePrefix("DELETED:"))
+            } else {
+                activeKeys[key] = id
+            }
+        }
+        activeKeys.forEach { (key, id) ->
+            keyToIdMap[key] = id
+            idToKeyMap[id] = key
         }
     }
 

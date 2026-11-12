@@ -39,13 +39,20 @@ object DualCompanionHouseApplicator {
     private var houseView: HouseSceneRenderer? = null
 
     // New engines
-    var needsEngine: NeedsEngine? = null; private set
-    var relationshipEngine: RelationshipEngine? = null; private set
-    var autonomousAI: AutonomousBehaviorAI? = null; private set
-    var touchReactionEngine: TouchReactionEngine? = null; private set
-    var miniGameManager: MiniGameManager? = null; private set
-    var particleEngine: ParticleEngine? = null; private set
-    var fridge: FridgeInventory? = null; private set
+    var needsEngine: NeedsEngine? = null
+    private set
+    var relationshipEngine: RelationshipEngine? = null
+    private set
+    var autonomousAI: AutonomousBehaviorAI? = null
+    private set
+    var touchReactionEngine: TouchReactionEngine? = null
+    private set
+    var miniGameManager: MiniGameManager? = null
+    private set
+    var particleEngine: ParticleEngine? = null
+    private set
+    var fridge: FridgeInventory? = null
+    private set
 
     // Callbacks
     private var onMoodChanged: ((CharacterIdentity, EmotionalState) -> Unit)? = null

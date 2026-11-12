@@ -41,7 +41,9 @@ export async function createCompanionApp(overrides = {}) {
     bridgeManager,
     backupStore,
     launchToken: httpServer.launchToken,
-    launchUrl: `http://${config.bindHost}:${config.port}/?token=${httpServer.launchToken}`,
+    get launchUrl() {
+      return `http://${config.bindHost}:${config.port}/?token=${httpServer.launchToken}`;
+    },
     async start() {
       await httpServer.start();
       logger.info("CalcVault companion started", {

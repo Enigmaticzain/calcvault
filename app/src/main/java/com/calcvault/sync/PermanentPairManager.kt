@@ -2,6 +2,7 @@ package com.calcvault.sync
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.calcvault.utils.PairedUserIdentity
 import com.calcvault.utils.SessionManager
 
 /**
@@ -58,18 +59,8 @@ object PermanentPairManager {
             .putLong(KEY_PAIR_TIMESTAMP, System.currentTimeMillis())
             .apply()
 
-        // Wire into SessionManager
-        if (normalizedRole == "zain") {
-            SessionManager.localUserId = "zain"
-            SessionManager.partnerUserId = "sanu"
-            SessionManager.localNickname = "Zain"
-            SessionManager.partnerNickname = "Sanu"
-        } else {
-            SessionManager.localUserId = "sanu"
-            SessionManager.partnerUserId = "zain"
-            SessionManager.localNickname = "Sanu"
-            SessionManager.partnerNickname = "Zain"
-        }
+        // Keep pairing identity consistent with the rest of the app's stable USER_A/USER_B IDs.
+        applyRoleToSession(normalizedRole)
     }
 
     /**
@@ -77,18 +68,16 @@ object PermanentPairManager {
      */
     fun restoreSession() {
         if (!isPaired) return
-        val role = myRole
-        if (role == "zain") {
-            SessionManager.localUserId = "zain"
-            SessionManager.partnerUserId = "sanu"
-            SessionManager.localNickname = "Zain"
-            SessionManager.partnerNickname = "Sanu"
-        } else if (role == "sanu") {
-            SessionManager.localUserId = "sanu"
-            SessionManager.partnerUserId = "zain"
-            SessionManager.localNickname = "Sanu"
-            SessionManager.partnerNickname = "Zain"
-        }
+        applyRoleToSession(myRole)
+    }
+
+    private fun applyRoleToSession(role: String) {
+        val localId = PairedUserIdentity.stableId(role) ?: return
+        val partnerId = PairedUserIdentity.partnerId(localId) ?: return
+        SessionManager.localUserId = localId
+        SessionManager.partnerUserId = partnerId
+        SessionManager.localNickname = PairedUserIdentity.displayName(localId).orEmpty()
+        SessionManager.partnerNickname = PairedUserIdentity.displayName(partnerId).orEmpty()
     }
 
     // ─── Version / Update Management ────────────────────────────────
@@ -128,4 +117,19 @@ object PermanentPairManager {
     }
 
     fun getPartnerDeviceId(): String = prefs.getString(KEY_PARTNER_DEVICE_ID, "") ?: ""
+
+    /** Remove this device's permanent pair identity; future pairing requires a new explicit setup. */
+    fun forgetPair(): Boolean {
+        val saved = prefs.edit()
+            .remove(KEY_IS_PAIRED)
+            .remove(KEY_MY_ROLE)
+            .remove(KEY_PAIR_TIMESTAMP)
+            .remove(KEY_PARTNER_DEVICE_ID)
+            .commit()
+        SessionManager.localUserId = ""
+        SessionManager.partnerUserId = ""
+        SessionManager.localNickname = ""
+        SessionManager.partnerNickname = ""
+        return saved
+    }
 }

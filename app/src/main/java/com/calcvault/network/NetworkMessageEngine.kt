@@ -9,9 +9,13 @@ import android.util.Base64
 import com.calcvault.BuildConfig
 import com.calcvault.messaging.AppendOnlyMessageDB
 import com.calcvault.messaging.MessageRecord
-import com.calcvault.storage.MediaChunkManager
+import com.calcvault.network.privacy.PrivacyControlStore
+import com.calcvault.network.privacy.PrivacyFeature
+import com.calcvault.network.privacy.PrivacyMode
+import com.calcvault.network.privacy.PrivacyTransportGate
+import com.calcvault.network.privacy.SafetyContactStore
 import com.calcvault.storage.USBStorageEngine
-import com.calcvault.storage.provider.StorageManager
+import com.calcvault.utils.PairedUserIdentity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,14 +35,20 @@ import java.net.HttpURLConnection
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.URL
-import java.util.ArrayDeque
-import java.util.concurrent.ConcurrentHashMap
 
 class NetworkMessageEngine(
     private val context: Context,
-    private val messageDB: AppendOnlyMessageDB,
-    private val storageEngine: USBStorageEngine
+    @Suppress("UNUSED_PARAMETER") messageDB: AppendOnlyMessageDB,
+    @Suppress("UNUSED_PARAMETER") storageEngine: USBStorageEngine
 ) {
+    private val safetyContacts = SafetyContactStore(context)
+    private val privacyControls = PrivacyControlStore(context)
+    @Volatile
+    private var initializedFeatures: Set<PrivacyFeature> = emptySet()
+    @Volatile
+    private var initializedWithOneTimeWatchConsent = false
+    @Volatile
+    private var initializedWithOneTimeListenConsent = false
     enum class TransportMode { P2P_HOST, P2P_SRFLX, RELAY, OFFLINE }
     enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED }
 
@@ -79,19 +89,6 @@ class NetworkMessageEngine(
         }
     }
 
-    private data class PendingRelay(
-        val messageId: Long,
-        val senderId: String,
-        val type: Int,
-        val timestamp: Long,
-        val chunkCount: Int,
-        val mimeType: String,
-        val fileName: String,
-        val thumbHash: String,
-        var updatedAt: Long,
-        val chunks: MutableMap<Int, ByteArray> = mutableMapOf()
-    )
-
     private data class HttpResponse(
         val code: Int,
         val body: String,
@@ -120,8 +117,6 @@ class NetworkMessageEngine(
         private const val MAX_CHUNK_BYTES = 192 * 1024
         private const val MAX_FAILURES_BEFORE_DISCONNECT = 3
         private const val MAX_POLL_BATCH = 32
-        private const val MAX_TRACKED_MESSAGE_IDS = 4_096
-        private const val PENDING_RELAY_TTL_MS = 3 * 60_000L
         private const val PARTNER_STALE_MS = 75_000L
         private const val OUTBOUND_QUEUE_CAPACITY = 128
         private const val OUTBOUND_RETRY_DELAY_MS = 750L
@@ -129,11 +124,7 @@ class NetworkMessageEngine(
     }
 
     private var engineScope = newEngineScope()
-    private val mediaManager by lazy { MediaChunkManager(storageEngine, messageDB) }
     private val outboundQueue = Channel<RelayEnvelope>(OUTBOUND_QUEUE_CAPACITY)
-    private val pendingRelays = ConcurrentHashMap<String, PendingRelay>()
-    private val receivedMessageIds = ConcurrentHashMap.newKeySet<Long>()
-    private val receivedMessageOrder = ArrayDeque<Long>()
 
     private var localUserId = ""
     private var partnerUserId = ""
@@ -160,19 +151,101 @@ class NetworkMessageEngine(
     var onConnectionStateChanged: ((ConnectionState, TransportMode) -> Unit)? = null
     var onUpdateAvailable: ((UpdateInfo) -> Unit)? = null
     var onControlSignalReceived: ((JSONObject) -> Unit)? = null
+    var onPrivacyRouteUnavailable: ((String) -> Unit)? = null
+    @Volatile
+    var privacyRouteUnavailableReason: String? = null
+        private set
 
-    fun initialize(localId: String, partnerId: String, discovery: String, relay: String? = null) {
+    /**
+     * Start the signaling loops only for a named feature with a currently configured,
+     * consented route. A remembered preference is not accepted as proof that a route
+     * exists; Watch Together additionally requires this invocation's one-time consent.
+     */
+    fun initialize(
+        localId: String,
+        partnerId: String,
+        discovery: String,
+        relay: String? = null,
+        feature: PrivacyFeature? = null,
+        oneTimeWatchConsent: Boolean = false,
+        additionalFeatures: Set<PrivacyFeature> = emptySet(),
+        oneTimeListenConsent: Boolean = false
+    ) {
         restartEngineScopeIfNeeded()
         stopLoops()
-        localUserId = localId.ifBlank { "USER_A" }
-        partnerUserId = partnerId.ifBlank { "USER_B" }
+        privacyRouteUnavailableReason = null
+        localUserId = PairedUserIdentity.stableId(localId) ?: localId.trim().ifBlank { PairedUserIdentity.USER_A }
+        partnerUserId = PairedUserIdentity.stableId(partnerId) ?: partnerId.trim().ifBlank { PairedUserIdentity.USER_B }
         endpoints = SignalingEndpointResolver.resolve(
             relay?.takeIf { it.isNotBlank() } ?: discovery
         )
+        val requestedFeatures = (additionalFeatures + listOfNotNull(feature)).toSet()
+        initializedFeatures = requestedFeatures
+        initializedWithOneTimeWatchConsent = oneTimeWatchConsent &&
+            PrivacyFeature.WATCH_TOGETHER in requestedFeatures
+        initializedWithOneTimeListenConsent = oneTimeListenConsent &&
+            PrivacyFeature.LISTEN_TOGETHER in requestedFeatures
+
+        val blockedFeature = requestedFeatures.firstOrNull { requested ->
+            val mode = privacyControls.mode(requested)
+            val routeAvailable = controlRouteAvailable(
+                feature = requested,
+                mode = mode,
+                oneTimeWatchConsent = initializedWithOneTimeWatchConsent &&
+                    requested == PrivacyFeature.WATCH_TOGETHER,
+                oneTimeListenConsent = initializedWithOneTimeListenConsent &&
+                    requested == PrivacyFeature.LISTEN_TOGETHER
+            )
+            !PrivacyTransportGate.control(
+                feature = requested,
+                mode = mode,
+                selectedRouteAvailable = routeAvailable,
+                oneTimeWatchConsent = initializedWithOneTimeWatchConsent &&
+                    requested == PrivacyFeature.WATCH_TOGETHER,
+                oneTimeListenConsent = initializedWithOneTimeListenConsent &&
+                    requested == PrivacyFeature.LISTEN_TOGETHER
+            ).allowed
+        }
+        val gate = if (requestedFeatures.isEmpty()) {
+            PrivacyTransportGate.control(
+                PrivacyFeature.MESSAGING,
+                PrivacyMode.MAX_PRIVACY,
+                selectedRouteAvailable = false
+            )
+        } else if (blockedFeature == null) {
+            null
+        } else {
+            val blockedMode = privacyControls.mode(blockedFeature)
+            PrivacyTransportGate.control(
+                feature = blockedFeature,
+                mode = blockedMode,
+                selectedRouteAvailable = controlRouteAvailable(
+                    feature = blockedFeature,
+                    mode = blockedMode,
+                    oneTimeWatchConsent = initializedWithOneTimeWatchConsent &&
+                        blockedFeature == PrivacyFeature.WATCH_TOGETHER,
+                    oneTimeListenConsent = initializedWithOneTimeListenConsent &&
+                        blockedFeature == PrivacyFeature.LISTEN_TOGETHER
+                ),
+                oneTimeWatchConsent = initializedWithOneTimeWatchConsent &&
+                    blockedFeature == PrivacyFeature.WATCH_TOGETHER,
+                oneTimeListenConsent = initializedWithOneTimeListenConsent &&
+                    blockedFeature == PrivacyFeature.LISTEN_TOGETHER
+            )
+        }
+        if (gate?.allowed == false) {
+            initializedFeatures = emptySet()
+            initializedWithOneTimeWatchConsent = false
+            initializedWithOneTimeListenConsent = false
+            privacyRouteUnavailableReason = gate.explanation
+            onPrivacyRouteUnavailable?.invoke(gate.explanation)
+            disconnect()
+            return
+        }
+
         consecutiveFailures = 0
         lastServerContactAt = 0L
         lastPartnerSeenAt = 0L
-        pendingRelays.clear()
         updateConnectionState(ConnectionState.CONNECTING, TransportMode.RELAY)
         setupNetworkObserver()
         startRegistrationLoop()
@@ -183,20 +256,14 @@ class NetworkMessageEngine(
         triggerImmediateRefresh()
     }
 
+    @Suppress("UNUSED_PARAMETER")
     suspend fun sendEncryptedPayload(id: Long, data: ByteArray, type: Int): Boolean {
-        val payload = data.copyOf()
-        val envelopes = chunkPayload(
-            messageId = id,
-            payload = payload,
-            type = type,
-            mimeType = "",
-            fileName = "",
-            thumbHash = ""
-        )
-        envelopes.forEach { outboundQueue.send(it) }
-        return true
+        // No authenticated interoperable content envelope/transport is wired. Respect the
+        // Messaging preference for diagnostics, but do not send plaintext or local ciphertext.
+        return rejectContent(PrivacyFeature.MESSAGING)
     }
 
+    @Suppress("UNUSED_PARAMETER")
     suspend fun sendMediaPayload(
         id: Long,
         data: ByteArray,
@@ -205,26 +272,101 @@ class NetworkMessageEngine(
         fileName: String = "",
         thumbHash: String = ""
     ): Boolean {
-        val payload = data.copyOf()
-        val envelopes = chunkPayload(
-            messageId = id,
-            payload = payload,
-            type = type,
-            mimeType = mimeType,
-            fileName = fileName,
-            thumbHash = thumbHash
-        )
-        envelopes.forEach { outboundQueue.send(it) }
-        return true
+        // File/media content has its own route preference and remains blocked until a real
+        // E2EE file transport and a selected route adapter are available.
+        return rejectContent(PrivacyFeature.FILE_SHARING)
     }
 
-    fun sendTyping(isTyping: Boolean) {
-        engineScope.launch {
-            sendPresenceStatus(if (isTyping) "TYPING" else "STOPPED_TYPING")
+    private fun rejectContent(feature: PrivacyFeature): Boolean {
+        val mode = privacyControls.mode(feature)
+        val gate = PrivacyTransportGate.content(
+            feature = feature,
+            endToEndEncryptionReady = false,
+            selectedRouteAvailable = false,
+            mode = mode
+        )
+        privacyRouteUnavailableReason = gate.explanation
+        onPrivacyRouteUnavailable?.invoke(gate.explanation)
+        return false
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun controlRouteAvailable(
+        feature: PrivacyFeature,
+        mode: PrivacyMode,
+        oneTimeWatchConsent: Boolean = false,
+        oneTimeListenConsent: Boolean = false
+    ): Boolean {
+        // HTTPS protects only the client-to-server hop. The configured service does not
+        // provide authenticated peer signaling or a ciphertext-only envelope, so it is
+        // not an approved route for SDP/ICE, Watch, or Listen control data. TURN config
+        // describes a possible media path, not a secure signaling path. Fail closed.
+        return false
+    }
+
+    private fun controlFeature(type: String, extras: JSONObject): PrivacyFeature? {
+        val normalizedType = type.lowercase(java.util.Locale.US)
+        return when {
+            normalizedType.startsWith("watch_") -> PrivacyFeature.WATCH_TOGETHER
+            normalizedType.startsWith("listen_") -> PrivacyFeature.LISTEN_TOGETHER
+            normalizedType.startsWith("screenshare_") -> PrivacyFeature.SCREEN_SHARING
+            normalizedType.startsWith("call_") || normalizedType.startsWith("webrtc_") -> {
+                when (extras.optString("callType").uppercase(java.util.Locale.US)) {
+                    "VOICE" -> PrivacyFeature.AUDIO_CALLS
+                    "VIDEO" -> PrivacyFeature.VIDEO_CALLS
+                    else -> null
+                }
+            }
+            else -> null
         }
     }
 
-    suspend fun sendControlSignal(type: String, extras: JSONObject = JSONObject()): Boolean {
+    /** Typing status is metadata; keep it local until a feature-approved route exists. */
+    fun sendTyping(isTyping: Boolean) {
+        if (privacyControls.mode(PrivacyFeature.MESSAGING) == PrivacyMode.MAX_PRIVACY) return
+        onPrivacyRouteUnavailable?.invoke(
+            "Typing status was not sent: verified end-to-end encryption and an approved messaging route are unavailable."
+        )
+    }
+
+    suspend fun sendControlSignal(
+        type: String,
+        extras: JSONObject = JSONObject(),
+        oneTimeWatchConsent: Boolean = false,
+        oneTimeListenConsent: Boolean = false
+    ): Boolean {
+        val feature = controlFeature(type, extras)
+        if (feature == null || feature !in initializedFeatures) {
+            val explanation = "Signaling was not sent: this signal has no active, feature-approved privacy route."
+            privacyRouteUnavailableReason = explanation
+            onPrivacyRouteUnavailable?.invoke(explanation)
+            return false
+        }
+
+        val mode = privacyControls.mode(feature)
+        val routeAvailable = controlRouteAvailable(
+            feature = feature,
+            mode = mode,
+            oneTimeWatchConsent = oneTimeWatchConsent && initializedWithOneTimeWatchConsent &&
+                feature == PrivacyFeature.WATCH_TOGETHER,
+            oneTimeListenConsent = oneTimeListenConsent && initializedWithOneTimeListenConsent &&
+                feature == PrivacyFeature.LISTEN_TOGETHER
+        )
+        val gate = PrivacyTransportGate.control(
+            feature = feature,
+            mode = mode,
+            selectedRouteAvailable = routeAvailable,
+            oneTimeWatchConsent = oneTimeWatchConsent && initializedWithOneTimeWatchConsent &&
+                feature == PrivacyFeature.WATCH_TOGETHER,
+            oneTimeListenConsent = oneTimeListenConsent && initializedWithOneTimeListenConsent &&
+                feature == PrivacyFeature.LISTEN_TOGETHER
+        )
+        if (!gate.allowed) {
+            privacyRouteUnavailableReason = gate.explanation
+            onPrivacyRouteUnavailable?.invoke(gate.explanation)
+            return false
+        }
+
         val payload = JSONObject(extras.toString()).apply {
             put("type", type)
             put("from", localUserId)
@@ -251,7 +393,6 @@ class NetworkMessageEngine(
         heartbeatJob?.cancel()
         heartbeatJob = engineScope.launch {
             while (isActive) {
-                prunePendingRelays()
                 val heartbeatOk = runSafely { sendHeartbeat() } ?: false
                 val partnerSnapshot = runSafely { refreshPartnerPresence() }
                     ?: PresenceSnapshot(reachedServer = false, isOnline = false)
@@ -409,10 +550,29 @@ class NetworkMessageEngine(
 
     private fun handleSignalPayload(json: JSONObject) {
         val type = inferSignalType(json)
+        val isFeatureSignal = type.startsWith("call_") || type.startsWith("webrtc_") ||
+            type.startsWith("screenshare_") || type.startsWith("watch_") || type.startsWith("listen_") ||
+            type in setOf("offer", "answer", "ice", "bye", "signal")
         val from = json.optString("from")
             .ifBlank { json.optString("device_id") }
             .ifBlank { json.optString("deviceId") }
-            .ifBlank { partnerUserId }
+        val normalizedFrom = PairedUserIdentity.stableId(from) ?: from.trim()
+        val normalizedTo = PairedUserIdentity.stableId(json.optString("to")) ?: json.optString("to").trim()
+        if (isFeatureSignal && (normalizedFrom.isBlank() || normalizedFrom != partnerUserId ||
+                normalizedTo != localUserId)
+        ) return
+        if (safetyContacts.isBlocked(from) || safetyContacts.isBlocked(normalizedFrom)) return
+        if (isFeatureSignal) {
+            val feature = controlFeature(type, json) ?: return
+            val mode = privacyControls.mode(feature)
+            val hasWatchConsent = initializedWithOneTimeWatchConsent &&
+                feature == PrivacyFeature.WATCH_TOGETHER
+            val hasListenConsent = initializedWithOneTimeListenConsent &&
+                feature == PrivacyFeature.LISTEN_TOGETHER
+            if (feature !in initializedFeatures ||
+                !controlRouteAvailable(feature, mode, hasWatchConsent, hasListenConsent)
+            ) return
+        }
         when (type) {
             "presence" -> {
                 val status = json.optString("status")
@@ -420,16 +580,18 @@ class NetworkMessageEngine(
                     .ifBlank { json.optString("state") }
                     .ifBlank { "ONLINE" }
                 if (!status.equals("OFFLINE", ignoreCase = true)) {
-                    markPartnerSeen(from)
+                    markPartnerSeen(normalizedFrom)
                 }
-                onPresenceUpdate?.invoke(from, status)
+                onPresenceUpdate?.invoke(normalizedFrom, status)
             }
             "call_offer", "call_accept", "call_reject", "call_end", "offer", "answer", "ice", "bye" -> {
-                markPartnerSeen(from)
+                markPartnerSeen(normalizedFrom)
                 onControlSignalReceived?.invoke(json)
             }
             else -> {
-                if (type.startsWith("listen_") || type.startsWith("screenshare_") || type == "care_drop") {
+                if (type.startsWith("listen_") || type.startsWith("screenshare_") ||
+                    type.startsWith("watch_") || type == "care_drop"
+                ) {
                     markPartnerSeen(from)
                     onControlSignalReceived?.invoke(json)
                 } else if (json.has("signal") || json.has("sdp") || json.has("candidate") || json.has("callId")) {
@@ -442,164 +604,25 @@ class NetworkMessageEngine(
         }
     }
 
-    private suspend fun handleRelayPayload(json: JSONObject) {
-        val messageId = json.optLong("mid", json.optLong("messageId", 0L))
+    private fun handleRelayPayload(json: JSONObject) {
         val senderId = json.optString("from").ifBlank { json.optString("sid").ifBlank { partnerUserId } }
+        if (safetyContacts.isBlocked(senderId)) return
         val type = json.optInt("type", AppendOnlyMessageDB.MSG_TEXT)
-        val timestamp = json.optLong("ts", System.currentTimeMillis())
-        val chunkCount = json.optInt("chunkCount", 1).coerceAtLeast(1)
-        val chunkIndex = json.optInt("chunkIndex", 0).coerceAtLeast(0)
-        val payloadEncoded = json.optString("payload").ifBlank { json.optString("data") }
-        if (payloadEncoded.isBlank()) return
-
-        val payload = try {
-            Base64.decode(payloadEncoded, Base64.DEFAULT)
-        } catch (_: Exception) {
-            return
-        }
-        markPartnerSeen(senderId)
-
-        if (chunkCount <= 1) {
-            persistIncomingPayload(messageId, senderId, type, timestamp, payload, json)
-            return
-        }
-
-        val transferKey = "$senderId:$messageId:$type"
-        val pending = pendingRelays.getOrPut(transferKey) {
-            PendingRelay(
-                messageId = messageId,
-                senderId = senderId,
-                type = type,
-                timestamp = timestamp,
-                chunkCount = chunkCount,
-                mimeType = json.optString("mimeType"),
-                fileName = json.optString("fileName"),
-                thumbHash = json.optString("thumbHash"),
-                updatedAt = System.currentTimeMillis()
-            )
-        }
-        pending.updatedAt = System.currentTimeMillis()
-        pending.chunks[chunkIndex] = payload
-
-        if (pending.chunks.size == pending.chunkCount) {
-            pendingRelays.remove(transferKey)
-            val merged = mergeChunks(pending)
-            persistIncomingPayload(
-                messageId = pending.messageId,
-                senderId = pending.senderId,
-                type = pending.type,
-                timestamp = pending.timestamp,
-                payload = merged,
-                meta = JSONObject().apply {
-                    if (pending.mimeType.isNotBlank()) put("mimeType", pending.mimeType)
-                    if (pending.fileName.isNotBlank()) put("fileName", pending.fileName)
-                    if (pending.thumbHash.isNotBlank()) put("thumbHash", pending.thumbHash)
-                }
-            )
-        }
-    }
-
-    private suspend fun persistIncomingPayload(
-        messageId: Long,
-        senderId: String,
-        type: Int,
-        timestamp: Long,
-        payload: ByteArray,
-        meta: JSONObject
-    ) {
-        if (!rememberReceivedMessage(messageId)) return
-
-        val decodedBytes = decodeOpaquePayload(payload)
-        val record = when (type) {
+        val feature = when (type) {
             AppendOnlyMessageDB.MSG_IMAGE,
             AppendOnlyMessageDB.MSG_VIDEO,
             AppendOnlyMessageDB.MSG_AUDIO,
-            AppendOnlyMessageDB.MSG_FILE -> buildIncomingMediaRecord(
-                messageId = messageId,
-                senderId = senderId,
-                type = type,
-                timestamp = timestamp,
-                payload = decodedBytes,
-                meta = meta
-            )
-            AppendOnlyMessageDB.MSG_MOOD -> {
-                val mood = decodedBytes.toString(Charsets.UTF_8)
-                StorageManager.write("mood/$senderId", mood.toByteArray())
-                MessageRecord(
-                    id = messageId,
-                    type = type,
-                    from = senderId,
-                    to = localUserId,
-                    content = mood,
-                    timestamp = timestamp
-                )
-            }
-            else -> {
-                MessageRecord(
-                    id = messageId,
-                    type = type,
-                    from = senderId,
-                    to = localUserId,
-                    content = decodedBytes.toString(Charsets.UTF_8),
-                    timestamp = timestamp
-                )
-            }
+            AppendOnlyMessageDB.MSG_FILE -> PrivacyFeature.FILE_SHARING
+            else -> PrivacyFeature.MESSAGING
         }
-
-        try {
-            messageDB.saveReceivedMessage(record)
-            sendPresenceStatus("DELIVERED:$messageId")
-            onMessageReceived?.invoke(record)
-        } finally {
-            decodedBytes.fill(0)
-            payload.fill(0)
-        }
-    }
-
-    private suspend fun buildIncomingMediaRecord(
-        messageId: Long,
-        senderId: String,
-        type: Int,
-        timestamp: Long,
-        payload: ByteArray,
-        meta: JSONObject
-    ): MessageRecord {
-        val mediaType = when (type) {
-            AppendOnlyMessageDB.MSG_IMAGE -> MediaChunkManager.MediaType.IMAGE
-            AppendOnlyMessageDB.MSG_VIDEO -> MediaChunkManager.MediaType.VIDEO
-            AppendOnlyMessageDB.MSG_AUDIO -> MediaChunkManager.MediaType.AUDIO
-            else -> MediaChunkManager.MediaType.FILE
-        }
-        val mimeType = meta.optString("mimeType").ifBlank {
-            when (mediaType) {
-                MediaChunkManager.MediaType.IMAGE -> "image/jpeg"
-                MediaChunkManager.MediaType.VIDEO -> "video/mp4"
-                MediaChunkManager.MediaType.AUDIO -> "audio/mp4"
-                MediaChunkManager.MediaType.FILE -> "application/octet-stream"
-            }
-        }
-        val fileName = meta.optString("fileName")
-        val ref = mediaManager.storeMedia(
-            rawBytes = payload.copyOf(),
-            type = mediaType,
-            mimeType = mimeType,
-            fileName = fileName
+        val gate = PrivacyTransportGate.content(
+            feature = feature,
+            endToEndEncryptionReady = false,
+            selectedRouteAvailable = false,
+            mode = privacyControls.mode(feature)
         )
-        val extra = JSONObject().apply {
-            put("ref", ref.mediaId.toString())
-            if (ref.thumbHash.isNotBlank()) put("thumb", ref.thumbHash)
-            if (mimeType.isNotBlank()) put("mime", mimeType)
-            if (fileName.isNotBlank()) put("name", fileName)
-        }
-        return MessageRecord(
-            id = messageId,
-            type = type,
-            from = senderId,
-            to = localUserId,
-            content = if (mediaType == MediaChunkManager.MediaType.FILE) "[File]" else "[Media]",
-            timestamp = timestamp,
-            extra = extra.toString()
-        )
+        // Reject relay content before base64 decoding, chunk buffering, local decryption, or persistence.
+        onPrivacyRouteUnavailable?.invoke("Incoming content ignored: ${gate.explanation}")
     }
 
     private fun chunkPayload(
@@ -652,26 +675,6 @@ class NetworkMessageEngine(
                 )
                 index++
             }
-        }
-    }
-
-    private fun mergeChunks(pending: PendingRelay): ByteArray {
-        val totalSize = pending.chunks.values.sumOf { it.size }
-        val merged = ByteArray(totalSize)
-        var offset = 0
-        for (index in 0 until pending.chunkCount) {
-            val chunk = pending.chunks[index] ?: continue
-            System.arraycopy(chunk, 0, merged, offset, chunk.size)
-            offset += chunk.size
-        }
-        return merged
-    }
-
-    private fun decodeOpaquePayload(payload: ByteArray): ByteArray {
-        return try {
-            storageEngine.decrypt(payload)
-        } catch (_: Exception) {
-            payload.copyOf()
         }
     }
 
@@ -797,17 +800,15 @@ class NetworkMessageEngine(
 
     fun disconnect() {
         stopLoops()
+        initializedFeatures = emptySet()
+        initializedWithOneTimeWatchConsent = false
+        initializedWithOneTimeListenConsent = false
         engineScope.cancel()
         networkCallback?.let {
             val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             runCatching { manager?.unregisterNetworkCallback(it) }
         }
         networkCallback = null
-        pendingRelays.clear()
-        synchronized(receivedMessageOrder) {
-            receivedMessageOrder.clear()
-            receivedMessageIds.clear()
-        }
         consecutiveFailures = 0
         lastServerContactAt = 0L
         lastPartnerSeenAt = 0L
@@ -916,29 +917,6 @@ class NetworkMessageEngine(
         if (stale) {
             onPresenceUpdate?.invoke(partnerUserId, "OFFLINE")
         }
-    }
-
-    private fun rememberReceivedMessage(messageId: Long): Boolean {
-        if (messageId <= 0L) return true
-        synchronized(receivedMessageOrder) {
-            if (!receivedMessageIds.add(messageId)) return false
-            receivedMessageOrder.addLast(messageId)
-            while (receivedMessageOrder.size > MAX_TRACKED_MESSAGE_IDS) {
-                val evicted = receivedMessageOrder.removeFirst()
-                receivedMessageIds.remove(evicted)
-            }
-            return true
-        }
-    }
-
-    private fun prunePendingRelays(now: Long = System.currentTimeMillis()) {
-        val staleKeys = mutableListOf<String>()
-        for ((key, pending) in pendingRelays) {
-            if (now - pending.updatedAt >= PENDING_RELAY_TTL_MS) {
-                staleKeys += key
-            }
-        }
-        staleKeys.forEach { pendingRelays.remove(it) }
     }
 
     private fun hasActiveInternetNetwork(manager: ConnectivityManager): Boolean {

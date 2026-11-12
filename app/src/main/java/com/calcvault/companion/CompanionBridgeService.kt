@@ -6,7 +6,6 @@ import android.content.Intent
 import android.os.IBinder
 import android.util.Log
 import com.calcvault.BuildConfig
-import com.calcvault.network.SignalingServer
 import com.calcvault.storage.USBStorageEngine
 import java.net.InetSocketAddress
 
@@ -18,13 +17,16 @@ class CompanionBridgeService : Service() {
         @Volatile
         private var lastPairingTicket: CompanionPairingTicket? = null
 
-        fun start(context: Context, bindLan: Boolean = false, autoApprove: Boolean = BuildConfig.DEBUG) {
+        /** The only supported companion route is USB/ADB loopback; LAN has no approved file route. */
+        fun start(context: Context, bindLan: Boolean = false, autoApprove: Boolean = BuildConfig.DEBUG): Boolean {
+            if (bindLan) return false
             val intent = Intent(context, CompanionBridgeService::class.java).apply {
                 action = CompanionBridgeConstants.ACTION_START
-                putExtra(CompanionBridgeConstants.EXTRA_BIND_LAN, bindLan)
+                putExtra(CompanionBridgeConstants.EXTRA_BIND_LAN, false)
                 putExtra(CompanionBridgeConstants.EXTRA_AUTO_APPROVE, autoApprove)
             }
             context.startService(intent)
+            return true
         }
 
         fun stop(context: Context) {
@@ -38,7 +40,6 @@ class CompanionBridgeService : Service() {
     }
 
     private var bridgeServer: CompanionBridgeServer? = null
-    private var signalingServer: SignalingServer? = null
     private val pairingState = CompanionPairingState()
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -49,9 +50,14 @@ class CompanionBridgeService : Service() {
         }
 
         val bindLan = intent?.getBooleanExtra(CompanionBridgeConstants.EXTRA_BIND_LAN, false) ?: false
+        if (bindLan) {
+            Log.w(TAG, "LAN companion route rejected: no feature-approved ciphertext-only file transport is configured")
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         val autoApprove = intent?.getBooleanExtra(CompanionBridgeConstants.EXTRA_AUTO_APPROVE, BuildConfig.DEBUG)
             ?: BuildConfig.DEBUG
-        startBridge(bindLan = bindLan, autoApprove = autoApprove)
+        startBridge(autoApprove = autoApprove)
 
         return START_STICKY
     }
@@ -60,15 +66,13 @@ class CompanionBridgeService : Service() {
         super.onDestroy()
         bridgeServer?.shutdown()
         bridgeServer = null
-        signalingServer?.stop()
-        signalingServer = null
         pairingState.invalidate()
         lastPairingTicket = null
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun startBridge(bindLan: Boolean, autoApprove: Boolean) {
+    private fun startBridge(autoApprove: Boolean) {
         if (bridgeServer != null) {
             return
         }
@@ -79,7 +83,7 @@ class CompanionBridgeService : Service() {
         val backupManager = CompanionBackupManager(USBStorageEngine.getInstance(this))
         val fileVault = CompanionFileVault(this)
         val authorizer = CompanionOperationAuthorizer(allowDebugAutoApprove = autoApprove)
-        val host = if (bindLan) "0.0.0.0" else "127.0.0.1"
+        val host = "127.0.0.1"
 
         val server = CompanionBridgeServer(
             context = this,
@@ -96,19 +100,11 @@ class CompanionBridgeService : Service() {
             bridgeServer = server
             Log.i(TAG, "Bridge listening on ws://$host:${CompanionBridgeConstants.BRIDGE_PORT}${CompanionBridgeConstants.BRIDGE_PATH}")
             Log.i(TAG, "Pairing code issued: ${ticket.pairingCode} (expires ${ticket.expiresAt})")
-            
-            // Start Signaling Server on a related port
-            val sigServer = SignalingServer(CompanionBridgeConstants.SIGNALING_PORT)
-            sigServer.start()
-            signalingServer = sigServer
-            Log.i(TAG, "Signaling server listening on http://$host:${CompanionBridgeConstants.SIGNALING_PORT}")
-            
+
         }.onFailure { err ->
             Log.e(TAG, "Failed to start bridge server", err)
             server.shutdown()
             bridgeServer = null
-            signalingServer?.stop()
-            signalingServer = null
             pairingState.invalidate()
             lastPairingTicket = null
         }

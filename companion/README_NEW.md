@@ -207,7 +207,7 @@ CV_MAX_CHUNK_BYTES=262144              # Transfer chunk size (256 KB)
 CV_MAX_UPLOAD_BYTES=5368709120         # Max upload (5 GB)
 CV_ADB_PATH=/usr/bin/adb               # ADB path
 CV_PHONE_BRIDGE_PORT=37111             # Phone bridge port
-CV_ENABLE_NETWORK_TRANSPORT=true       # Allow WiFi mode
+# Direct LAN transport is disabled; no environment override is supported.
 CV_DISABLE_USB_TRANSPORT=false         # Disable USB mode
 LOG_LEVEL=info                         # Log level (debug, info, warn, error)
 ```

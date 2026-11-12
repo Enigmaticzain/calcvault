@@ -6,13 +6,12 @@ import java.util.Base64
 
 object CompanionBridgeController {
 
-    fun startUsbOnly(context: Context, autoApprove: Boolean = false) {
+    fun startUsbOnly(context: Context, autoApprove: Boolean = false): Boolean =
         CompanionBridgeService.start(context, bindLan = false, autoApprove = autoApprove)
-    }
 
-    fun startLanEnabled(context: Context, autoApprove: Boolean = false) {
+    /** LAN file sharing is disabled until a consented per-feature ciphertext-only route exists. */
+    fun startLanEnabled(context: Context, autoApprove: Boolean = false): Boolean =
         CompanionBridgeService.start(context, bindLan = true, autoApprove = autoApprove)
-    }
 
     fun stop(context: Context) {
         CompanionBridgeService.stop(context)

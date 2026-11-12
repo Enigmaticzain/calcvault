@@ -4,6 +4,8 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.util.UUID
+import com.calcvault.utils.PairedUserIdentity
 import java.io.File
 
 /**
@@ -74,6 +76,17 @@ class StorageQuotaManager(
         fileName: String,
         currentUser: String = UserOwnershipManager.USER_ZAIN
     ): StorageDecision = withContext(Dispatchers.IO) {
+        if (fileSize < 0L || fileName.isBlank()) {
+            return@withContext StorageDecision(
+                fileId = "",
+                fileName = fileName,
+                fileSize = fileSize,
+                owner = UserOwnershipManager.FileOwner.SHARED,
+                storagePath = "",
+                allowed = false,
+                reason = "Invalid file metadata"
+            )
+        }
         val fileId = generateFileId(fileName)
         val owner = ownershipManager.determineOwner(fileSize)
 
@@ -104,21 +117,15 @@ class StorageQuotaManager(
             )
         }
 
-        // Determine path
-        val path = when (owner) {
-            UserOwnershipManager.FileOwner.ZAIN -> {
-                val fileType = determineFileType(fileName)
-                "/calcvault/storage/${UserOwnershipManager.USER_ZAIN}/large_media/$fileType/$fileName"
-            }
-            UserOwnershipManager.FileOwner.SANU -> {
-                val fileType = determineFileType(fileName)
-                "/calcvault/storage/${UserOwnershipManager.USER_SANU}/media/$fileType/$fileName"
-            }
-            UserOwnershipManager.FileOwner.SHARED -> {
-                val fileType = determineFileType(fileName)
-                "/calcvault/storage/shared/$fileType/$fileName"
-            }
-        }
+        // Every destination is inside the app-private root, and the unique file ID prevents
+        // same-name uploads from silently overwriting one another.
+        val path = UserStoragePaths.forFile(
+            storageRoot = File(storageRoot),
+            owner = owner.displayName,
+            fileType = determineFileType(fileName),
+            fileName = fileName,
+            uniqueId = fileId
+        ).absolutePath
 
         Log.i(TAG, "Storage decision for $fileName: $owner → $path")
 
@@ -137,10 +144,11 @@ class StorageQuotaManager(
      * Check if user can store a file with given owner
      */
     private fun canStoreAs(userId: String, owner: UserOwnershipManager.FileOwner): Boolean {
-        return when {
-            userId == UserOwnershipManager.USER_ZAIN -> true // Zain can store anything
-            owner == UserOwnershipManager.FileOwner.ZAIN -> false // Only Zain can store large files
-            else -> userId == owner.displayName // Others store as themselves
+        val stableUserId = PairedUserIdentity.stableId(userId) ?: return false
+        return when (owner) {
+            UserOwnershipManager.FileOwner.ZAIN -> stableUserId == PairedUserIdentity.USER_A
+            UserOwnershipManager.FileOwner.SANU -> true // The primary user may store on behalf of either partner.
+            UserOwnershipManager.FileOwner.SHARED -> true // Both members of the personal pair may store shared files.
         }
     }
 
@@ -172,16 +180,28 @@ class StorageQuotaManager(
      */
     private fun calculateUsedSpace(owner: String): Long {
         return try {
-            val basePath = "/calcvault/storage/$owner"
-            val dir = File(basePath)
-
-            if (!dir.exists()) {
-                return 0L
+            if (com.calcvault.storage.provider.StorageManager.isReady()) {
+                val expectedOwner = UserStoragePaths.ownerDirectory(owner)
+                return com.calcvault.storage.provider.StorageManager.list("file-metadata/").sumOf { key ->
+                    val bytes = com.calcvault.storage.provider.StorageManager.read(key) ?: return@sumOf 0L
+                    try {
+                        val metadata = JSONObject(String(bytes, Charsets.UTF_8))
+                        val recordedOwner = runCatching {
+                            UserOwnershipManager.FileOwner.valueOf(metadata.optString("owner")).displayName
+                        }.getOrNull()
+                        if (recordedOwner?.equals(expectedOwner, ignoreCase = true) == true) {
+                            metadata.optLong("fileSize", 0L).coerceAtLeast(0L)
+                        } else {
+                            0L
+                        }
+                    } finally {
+                        bytes.fill(0)
+                    }
+                }
             }
 
-            dir.walk()
-                .filter { it.isFile }
-                .sumOf { it.length() }
+            val dir = File(storageRoot, UserStoragePaths.ownerDirectory(owner))
+            if (!dir.exists()) 0L else dir.walk().filter { it.isFile }.sumOf { it.length() }
         } catch (e: Exception) {
             Log.w(TAG, "Error calculating used space for $owner", e)
             0L
@@ -266,9 +286,8 @@ class StorageQuotaManager(
     /**
      * Generate unique file ID
      */
-    private fun generateFileId(fileName: String): String {
-        return "file_${System.currentTimeMillis()}_${fileName.hashCode().toLong().and(0xFFFFFF)}"
-    }
+    private fun generateFileId(@Suppress("UNUSED_PARAMETER") fileName: String): String =
+        "file_${UUID.randomUUID()}"
 
     /**
      * Determine file type from name

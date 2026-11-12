@@ -1,8 +1,8 @@
 # CalcVault Companion Bridge Protocol (`v1`)
 
-This protocol is used only on local transports:
+This protocol is currently enabled only on the USB/ADB loopback transport:
 - `USB`: `adb forward tcp:<pc-port> tcp:37111` then WebSocket `/bridge`
-- `LAN` (optional): direct `ws://` or `wss://` from PC to phone bridge endpoint
+- `LAN`: unsupported and rejected. There is no Android File Sharing route with explicit direct-IP consent wired to this bridge.
 
 The phone remains the source of truth. The PC is a transport and storage companion.
 
@@ -157,5 +157,5 @@ All privileged actions are operation-based and must be approved by phone:
 ## 4) Transport Security Notes
 
 - USB forwarding keeps the phone bridge non-routable from external hosts.
-- LAN mode should prefer `wss://` when available; protocol-level encryption still applies.
-- All operations remain encrypted post-handshake regardless of transport.
+- Direct LAN is disabled by both desktop and Android bridge code; no silent or automatic direct route is attempted.
+- USB/ADB loopback operations remain encrypted post-handshake. That local companion route is separate from partner messaging/file-sharing over the internet.

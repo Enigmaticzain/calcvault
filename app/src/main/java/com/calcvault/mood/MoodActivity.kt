@@ -95,6 +95,11 @@ class MoodActivity : AppCompatActivity() {
         storageEngine = USBStorageEngine.getInstance(this)
         messageDB = AppendOnlyMessageDB(storageEngine)
         networkEngine = NetworkMessageEngine(this, messageDB, storageEngine)
+        networkEngine.onPrivacyRouteUnavailable = { explanation ->
+            runOnUiThread {
+                Toast.makeText(this, explanation, Toast.LENGTH_LONG).show()
+            }
+        }
         themeEngine = ThemeEngine(this)
 
         buildUI()
@@ -266,13 +271,15 @@ class MoodActivity : AppCompatActivity() {
         lifecycleScope.launch {
             messageDB.saveMood(localUserId, "${mood.emoji} ${mood.label}")
             val encrypted = storageEngine.encrypt(mood.label.toByteArray())
-            networkEngine.sendEncryptedPayload(
+            val sent = networkEngine.sendEncryptedPayload(
                 System.currentTimeMillis(),
                 encrypted,
                 AppendOnlyMessageDB.MSG_MOOD
             )
-            runOnUiThread {
-                Toast.makeText(this@MoodActivity, "Mood updated", Toast.LENGTH_SHORT).show()
+            if (sent) {
+                runOnUiThread {
+                    Toast.makeText(this@MoodActivity, "Mood shared", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }

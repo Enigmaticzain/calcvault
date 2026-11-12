@@ -269,6 +269,20 @@
                 app:tint="@color/cv_button_primary_text"
                 android:contentDescription="@string/button_mute" />
 
+            <!-- Video calls expose a reversible local camera control. -->
+            <com.google.android.material.floatingactionbutton.FloatingActionButton
+                android:id="@+id/btnVideo"
+                style="@style/FABVault"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="@dimen/cv_space_md"
+                android:src="@android:drawable/ic_menu_camera"
+                app:backgroundTint="@color/cv_accent"
+                app:fabCustomSize="@dimen/cv_fab_md"
+                app:maxImageSize="24dp"
+                app:tint="@color/cv_button_primary_text"
+                android:contentDescription="@string/button_camera_off" />
+
             <!-- Flash Button -->
             <com.google.android.material.floatingactionbutton.FloatingActionButton
                 android:id="@+id/btnFlash"

@@ -15,6 +15,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.calcvault.R
 import com.calcvault.emotional.themes.ThemeApplicator
 import com.calcvault.ui.common.GlassUi
+import com.calcvault.utils.PairedUserIdentity
 import com.calcvault.utils.SessionManager
 
 class DualCompanionHouseActivity : AppCompatActivity() {
@@ -29,7 +30,7 @@ class DualCompanionHouseActivity : AppCompatActivity() {
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         setContentView(R.layout.activity_dual_companion_house)
 
-        controlledCharacter = controlledCharacterFor(SessionManager.localUserId.ifBlank { "zain" })
+        controlledCharacter = controlledCharacterFor(SessionManager.localUserId.ifBlank { PairedUserIdentity.USER_A })
         statusText = findViewById(R.id.petStatusText)
         roleText = findViewById(R.id.roleText)
         val houseContainer = findViewById<FrameLayout>(R.id.houseContainer)
@@ -214,7 +215,7 @@ class DualCompanionHouseActivity : AppCompatActivity() {
     }
 
     private fun updateRoleCopy() {
-        val localUser = SessionManager.localUserId.ifBlank { "zain" }
+        val localUser = PairedUserIdentity.displayName(SessionManager.localUserId).orEmpty().ifBlank { "Zain" }
         roleText.text = if (controlledCharacter == CharacterIdentity.SANU) {
             "You are $localUser — controlling Angela. Zain controls Tom."
         } else {
@@ -225,7 +226,7 @@ class DualCompanionHouseActivity : AppCompatActivity() {
     }
 
     private fun controlledCharacterFor(userId: String): CharacterIdentity {
-        return if (userId.equals("sanu", ignoreCase = true)) CharacterIdentity.SANU else CharacterIdentity.ZAIN
+        return if (PairedUserIdentity.stableId(userId) == PairedUserIdentity.USER_B) CharacterIdentity.SANU else CharacterIdentity.ZAIN
     }
 
     private fun controlledPetName(): String {

@@ -6,7 +6,7 @@
 - Node.js 18+
 - npm
 - ADB (Android Debug Bridge) for USB mode
-- Phone and PC on same WiFi (for network mode)
+- Phone and PC connected by USB/ADB; direct LAN mode is currently unavailable.
 
 ### Installation
 
@@ -52,16 +52,9 @@ adb forward tcp:37111 tcp:37111
 3. Click "Connect USB"
 4. Wait for connection status to show "Connected"
 
-### Network Mode (Optional)
+### Network Mode (Unavailable)
 
-**Setup:**
-1. Phone and PC must be on same WiFi
-2. Find phone's local IP: Settings → About → IP Address
-3. Phone must have bridge service running on port 37111
-
-**In Companion UI:**
-1. Enter: `ws://PHONE_IP:37111/bridge`
-2. Click "Connect Network"
+Direct LAN file transfer is rejected by the desktop transport and the Android bridge. There is no per-feature File Sharing direct route or consent integration; use USB/ADB loopback. No direct fallback is attempted.
 
 ---
 
@@ -69,7 +62,7 @@ adb forward tcp:37111 tcp:37111
 
 ### First Time Setup
 
-1. **Connect** via USB or Network
+1. **Connect** via USB/ADB loopback
 2. **Click "Start Pairing"**
    - Pairing code appears (e.g., `ABC12345`)
    - QR code displays
@@ -213,8 +206,7 @@ All sensitive operations require phone approval:
 # Allow only local access
 sudo ufw allow from 127.0.0.1 to 127.0.0.1 port 43831
 
-# Or for network mode (same WiFi):
-sudo ufw allow from 192.168.1.0/24 to any port 43831
+# No network-mode firewall rule is supported; keep the companion bound to loopback.
 ```
 
 ---

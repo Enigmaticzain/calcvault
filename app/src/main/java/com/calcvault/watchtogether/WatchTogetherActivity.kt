@@ -11,12 +11,16 @@ import android.provider.OpenableColumns
 import android.util.Log
 import android.view.*
 import android.widget.*
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.calcvault.call.SocketCallEngine
+import com.calcvault.messaging.AppendOnlyMessageDB
+import com.calcvault.network.NetworkMessageEngine
+import com.calcvault.network.privacy.ActivePrivacySessionRegistry
+import com.calcvault.utils.PairedUserIdentity
+import com.calcvault.utils.SessionManager
 import com.calcvault.emotional.ThemeEngine
 import com.calcvault.emotional.themes.ThemeApplicator
-import com.calcvault.network.webrtc.WebRTCManager
 import com.calcvault.storage.USBStorageEngine
 import com.calcvault.sync.*
 import com.calcvault.ui.common.GlassUi
@@ -68,8 +72,13 @@ class WatchTogetherActivity : AppCompatActivity() {
     private lateinit var themeEngine: ThemeEngine
     private lateinit var sessionManager: WatchSessionManager
     private lateinit var syncEngine: PlaybackSynchronizationEngine
-    private lateinit var socketEngine: SocketCallEngine
-    private var webRtcManager: WebRTCManager? = null
+    private lateinit var networkEngine: NetworkMessageEngine
+    private var timingExchangeJob: Job? = null
+    private var pendingTimingRequestId: String? = null
+    private var pendingTimingSentAtMs = 0L
+    private var hadNetworkConnection = false
+    private val signalingInitialized = false
+    private var consentPromptedSessionId = ""
 
     // UI Components
     private lateinit var videoView: VideoView
@@ -95,8 +104,11 @@ class WatchTogetherActivity : AppCompatActivity() {
     private var sessionId = ""
     private var moviePath = ""
     private var peerId = ""
+    private var localUserId = PairedUserIdentity.USER_A
     private var isHost = false
     private var currentSession: WatchSession? = null
+    private var privacySessionId: String? = null
+    private var invitationPromptedSessionId = ""
 
     // PiP state
     private var pipConfig = PipConfig()
@@ -133,8 +145,11 @@ class WatchTogetherActivity : AppCompatActivity() {
         themeEngine = ThemeEngine(this)
         sessionManager = WatchSessionManager(this, storageEngine)
         syncEngine = PlaybackSynchronizationEngine()
-        socketEngine = SocketCallEngine(this)
-
+        networkEngine = NetworkMessageEngine(this, AppendOnlyMessageDB(storageEngine), storageEngine)
+        localUserId = SessionManager.localUserId.ifBlank { PairedUserIdentity.USER_A }
+        peerId = peerId.ifBlank {
+            SessionManager.partnerUserId.ifBlank { PairedUserIdentity.partnerId(localUserId) ?: PairedUserIdentity.USER_B }
+        }
         buildUI()
         GlassUi.applyThemeChrome(this)
         setupPlayback()
@@ -157,16 +172,37 @@ class WatchTogetherActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        mediaPlayer?.pause()
-        isPlaying = false
+        if (isPlaying) {
+            mediaPlayer?.pause()
+            isPlaying = false
+            if (isHost && currentSession != null) {
+                val position = mediaPlayer?.currentPosition?.toLong() ?: 0L
+                sendSyncEventToPeer(syncEngine.createPauseEvent(position))
+                sessionManager.updateSessionState(PlaybackState.PAUSED, position)
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (currentSession == null) return
+        if (isHost) {
+            sendSyncEventToPeer(syncEngine.createStateSnapshot())
+        } else {
+            sendSyncEventToPeer(syncEngine.requestResync(mediaPlayer?.currentPosition?.toLong() ?: 0L))
+        }
+        startTimingExchange()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         mediaPlayer?.release()
+        ActivePrivacySessionRegistry.unregister(privacySessionId)
+        privacySessionId = null
+        WatchSignalInbox.unregister(sessionId)
         syncEngine.endSession()
-        socketEngine.endCall()
-        webRtcManager?.disconnect()
+        timingExchangeJob?.cancel()
+        networkEngine.disconnect()
         progressUpdateJob?.cancel()
         ThemeApplicator.detach(this)
     }
@@ -471,11 +507,7 @@ class WatchTogetherActivity : AppCompatActivity() {
 
                 // Create or join session based on host status
                 val session = if (isHost) {
-                    sessionManager.initiateWatchSession(
-                        moviePath,
-                        peerId,
-                        "zain" // TODO: Get actual user ID
-                    )
+                    sessionManager.initiateWatchSession(moviePath, peerId, localUserId)
                 } else {
                     val peerMovieHash = intent.getStringExtra(EXTRA_PEER_MOVIE_HASH) ?: ""
                     val peerMovieSize = intent.getLongExtra(EXTRA_PEER_MOVIE_SIZE, 0L)
@@ -486,7 +518,7 @@ class WatchTogetherActivity : AppCompatActivity() {
                         "", // Not used for joiner
                         peerMovieSize,
                         peerId,
-                        "sanu" // TODO: Get actual user ID
+                        localUserId
                     )
                 }
 
@@ -497,18 +529,35 @@ class WatchTogetherActivity : AppCompatActivity() {
                 }
 
                 currentSession = session
+                sessionId = session.sessionId
 
-                // Initialize sync engine
-                syncEngine.initializeSession(
-                    session,
-                    if (isHost) "zain" else "sanu", // TODO: Get from system
-                    isHost
-                )
+                // Initialize sync engine and local privacy-session controls.
+                syncEngine.endSession()
+                syncEngine.initializeSession(session, localUserId, isHost)
+                ActivePrivacySessionRegistry.unregister(privacySessionId)
+                privacySessionId = "watch:${session.sessionId}:$localUserId"
+                ActivePrivacySessionRegistry.register(
+                    id = privacySessionId!!,
+                    peerId = peerId,
+                    feature = "Watch Together"
+                ) {
+                    runOnUiThread {
+                        syncEngine.endSession()
+                        finish()
+                    }
+                }
 
-                // Setup sync callbacks
                 setupSyncCallbacks()
-
-                tvStatus.text = if (isHost) "Host - Ready" else "Connected as Follower"
+                WatchSignalInbox.register(session.sessionId, ::handleWatchSignal)
+                WatchSignalInbox.drain(session.sessionId).forEach(::handleWatchSignal)
+                startTimingExchange()
+                if (isHost) {
+                    promptWatchInvitation(session)
+                } else {
+                    promptWatchSyncConsent(session)
+                }
+                tvStatus.text = if (isHost) "Room ready. Review the invitation disclosure to invite." else
+                    "Joined room. Waiting for host state. Peer identity is not cryptographically verified."
             } catch (e: Exception) {
                 Log.e(TAG, "Error setting up sync", e)
                 tvStatus.text = "Sync error: ${e.message}"
@@ -568,43 +617,176 @@ class WatchTogetherActivity : AppCompatActivity() {
                 tvStatus.text = "SYNC LOST - Press Resync"
             }
         }
+        syncEngine.onStateSnapshotRequested = ::sendSyncEventToPeer
+        syncEngine.onSyncEventReceived = { event ->
+            if (event.eventType == SyncEventType.STATE_SNAPSHOT || event.eventType == SyncEventType.SESSION_END) {
+                sessionManager.updateSessionState(event.state, event.timelinePositionMs)
+            }
+            if (event.eventType == SyncEventType.SESSION_END) {
+                uiHandler.post {
+                    mediaPlayer?.pause()
+                    isPlaying = false
+                    tvStatus.text = "Host ended the Watch Together session."
+                }
+            }
+        }
     }
 
     // ── COMMUNICATION SETUP ──────────────────────────────────────────────────
 
     private fun setupCommunication() {
-        lifecycleScope.launch {
-            try {
+        networkEngine.onControlSignalReceived = ::handleWatchSignal
+        networkEngine.onConnectionStateChanged = { state, _ ->
+            val connected = state == NetworkMessageEngine.ConnectionState.CONNECTED
+            val justReconnected = connected && !hadNetworkConnection
+            hadNetworkConnection = connected
+            uiHandler.post {
+                if (!connected) {
+                    tvStatus.text = "Signaling unavailable. Playback stays local; synchronization is paused. No alternate route was attempted."
+                } else if (currentSession != null) {
+                    tvStatus.text = "Signaling connected. Peer identity is not cryptographically verified."
+                }
+            }
+            if (justReconnected && currentSession != null) {
                 if (isHost) {
-                    // Host waits for peer
-                    socketEngine.startCall()
+                    sendSyncEventToPeer(syncEngine.createStateSnapshot())
                 } else {
-                    // Peer connects to host
-                    val hostIp = "192.168.1.100" // TODO: Get from session setup
-                    socketEngine.answerCall(hostIp)
+                    sendSyncEventToPeer(syncEngine.requestResync(mediaPlayer?.currentPosition?.toLong() ?: 0L))
                 }
+                startTimingExchange()
+            }
+        }
+        isVoiceEnabled = false
+        isVideoEnabled = false
+        btnToggleVoice.isEnabled = false
+        btnToggleVideo.isEnabled = false
+        btnToggleVoice.alpha = 0.45f
+        btnToggleVideo.alpha = 0.45f
+        tvStatus.text = "Watch Together network sync is unavailable: no authenticated, ciphertext-only signaling route exists. Playback remains local; in-room audio/video is disabled."
+    }
 
-                // Set up audio handlers
-                socketEngine.onStateChanged = { state ->
-                    uiHandler.post {
-                        when (state) {
-                            SocketCallEngine.ConnectionState.CONNECTED -> {
-                                tvStatus.text = "Voice connected"
-                                isVoiceEnabled = true
-                            }
-                            SocketCallEngine.ConnectionState.DISCONNECTED -> {
-                                tvStatus.text = "Voice disconnected"
-                                isVoiceEnabled = false
-                            }
-                            else -> {}
-                        }
-                    }
+    private fun promptWatchSyncConsent(session: WatchSession) {
+        if (session.sessionId == consentPromptedSessionId) return
+        consentPromptedSessionId = session.sessionId
+        AlertDialog.Builder(this)
+            .setTitle("Watch Together sync unavailable")
+            .setMessage(
+                "No network route is approved for Watch Together. HTTPS signaling and one-time consent do not " +
+                    "provide authenticated peer identity or a ciphertext-only control channel. No sync event will be " +
+                    "sent and no less-private fallback will be attempted. Playback remains local."
+            )
+            .setPositiveButton("Continue locally", null)
+            .show()
+    }
+
+    private fun promptWatchInvitation(session: WatchSession) {
+        if (session.sessionId == invitationPromptedSessionId) return
+        invitationPromptedSessionId = session.sessionId
+        AlertDialog.Builder(this)
+            .setTitle("Watch Together invitation unavailable")
+            .setMessage(
+                "No authenticated, ciphertext-only signaling route is implemented. The invitation was not sent; " +
+                    "no direct or less-private fallback was attempted. You can continue local playback."
+            )
+            .setPositiveButton("Continue locally", null)
+            .show()
+    }
+
+    private fun handleWatchSignal(signal: JSONObject) {
+        val session = currentSession ?: return
+        val from = signal.optString("from")
+        if (from != peerId || signal.optString("sessionId") != session.sessionId) return
+
+        when (signal.optString("type")) {
+            "watch_sync_event" -> {
+                if (signal.optString("senderId") != from) return
+                val event = runCatching {
+                    SyncEvent(
+                        eventId = signal.optString("eventId"),
+                        sessionId = signal.optString("sessionId"),
+                        senderId = signal.optString("senderId"),
+                        eventType = SyncEventType.valueOf(signal.optString("eventType")),
+                        timelinePositionMs = signal.optLong("timelinePositionMs", -1L),
+                        state = PlaybackState.valueOf(signal.optString("state")),
+                        timestamp = signal.optLong("timestamp", 0L),
+                        driftMs = signal.optLong("driftMs", 0L)
+                    )
+                }.getOrNull() ?: return
+                if (event.eventId.isBlank() || event.timelinePositionMs < 0L || event.timestamp <= 0L) return
+                syncEngine.processSyncEvent(event)
+            }
+            "watch_sync_ping" -> {
+                val requestId = signal.optString("requestId")
+                if (requestId.isBlank()) return
+                val remoteReceivedAt = System.currentTimeMillis()
+                val remoteSentAt = System.currentTimeMillis()
+                sendWatchSignalAsync(
+                    "watch_sync_pong",
+                    JSONObject()
+                        .put("sessionId", session.sessionId)
+                        .put("requestId", requestId)
+                        .put("localSentAtMs", signal.optLong("localSentAtMs", -1L))
+                        .put("remoteReceivedAtMs", remoteReceivedAt)
+                        .put("remoteSentAtMs", remoteSentAt)
+                )
+            }
+            "watch_sync_pong" -> {
+                val requestId = signal.optString("requestId")
+                if (requestId.isBlank() || requestId != pendingTimingRequestId) return
+                val localSentAt = signal.optLong("localSentAtMs", -1L)
+                if (localSentAt != pendingTimingSentAtMs) return
+                val estimate = syncEngine.updateNetworkTiming(
+                    RoundTripTimingSample(
+                        localSentAtMs = localSentAt,
+                        remoteReceivedAtMs = signal.optLong("remoteReceivedAtMs", -1L),
+                        remoteSentAtMs = signal.optLong("remoteSentAtMs", -1L),
+                        localReceivedAtMs = System.currentTimeMillis()
+                    )
+                )
+                pendingTimingRequestId = null
+                estimate?.let { uiHandler.post { tvDrift.contentDescription = "Estimated network delay: ${it.estimatedOneWayDelayMs} ms" } }
+            }
+            "watch_join" -> if (isHost) {
+                uiHandler.post { tvStatus.text = "Peer joined. Playback controls are synchronized through signaling." }
+                sendSyncEventToPeer(syncEngine.createStateSnapshot())
+            }
+        }
+    }
+
+    private fun sendWatchSignalAsync(type: String, payload: JSONObject) {
+        if (!signalingInitialized) {
+            tvStatus.text = "Not sent: no authenticated ciphertext-only Watch Together route is available. Playback remains local."
+            return
+        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            val sent = runCatching {
+                networkEngine.sendControlSignal(type, payload, oneTimeWatchConsent = true)
+            }.getOrDefault(false)
+            if (!sent) {
+                uiHandler.post {
+                    tvStatus.text = "Not sent: no authenticated ciphertext-only signaling route is available. No less-private fallback was attempted."
                 }
+            }
+        }
+    }
 
-                Log.d(TAG, "Communication setup complete")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error setting up communication", e)
-                tvStatus.text = "Comm error: ${e.message}"
+    private fun startTimingExchange() {
+        if (!signalingInitialized || currentSession == null) return
+        timingExchangeJob?.cancel()
+        timingExchangeJob = lifecycleScope.launch {
+            while (isActive && currentSession != null) {
+                val requestId = UUID.randomUUID().toString()
+                val sentAt = System.currentTimeMillis()
+                pendingTimingRequestId = requestId
+                pendingTimingSentAtMs = sentAt
+                sendWatchSignalAsync(
+                    "watch_sync_ping",
+                    JSONObject()
+                        .put("sessionId", currentSession?.sessionId ?: return@launch)
+                        .put("requestId", requestId)
+                        .put("localSentAtMs", sentAt)
+                )
+                delay(15_000L)
             }
         }
     }
@@ -673,23 +855,24 @@ class WatchTogetherActivity : AppCompatActivity() {
 
     private fun onEndCallClicked() {
         Log.d(TAG, "Ending watch session")
-
-        currentSession?.let {
-            if (isHost) {
-                val endEvent = SyncEvent(
-                    sessionId = it.sessionId,
-                    senderId = "zain", // TODO
-                    eventType = SyncEventType.SESSION_END,
-                    timelinePositionMs = mediaPlayer?.currentPosition?.toLong() ?: 0L,
-                    state = PlaybackState.ENDED
-                )
-                sendSyncEventToPeer(endEvent)
+        val session = currentSession
+        if (session != null && isHost) {
+            val endEvent = SyncEvent(
+                sessionId = session.sessionId,
+                senderId = localUserId,
+                eventType = SyncEventType.SESSION_END,
+                timelinePositionMs = mediaPlayer?.currentPosition?.toLong() ?: 0L,
+                state = PlaybackState.ENDED
+            )
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) { postSyncEvent(endEvent) }
+                sessionManager.endSession()
+                finish()
             }
+        } else {
             sessionManager.endSession()
+            finish()
         }
-
-        socketEngine.endCall()
-        finish()
     }
 
     private fun openLocalVideoPicker() {
@@ -741,32 +924,50 @@ class WatchTogetherActivity : AppCompatActivity() {
     }
 
     private fun onVideoCompleted() {
-        currentSession?.let {
-            sessionManager.updateSessionState(PlaybackState.ENDED, mediaPlayer?.duration?.toLong() ?: 0L)
+        currentSession?.let { session ->
+            val position = mediaPlayer?.duration?.toLong() ?: 0L
+            sessionManager.updateSessionState(PlaybackState.ENDED, position)
+            if (isHost) {
+                sendSyncEventToPeer(
+                    SyncEvent(
+                        sessionId = session.sessionId,
+                        senderId = localUserId,
+                        eventType = SyncEventType.SESSION_END,
+                        timelinePositionMs = position,
+                        state = PlaybackState.ENDED
+                    )
+                )
+            }
         }
     }
 
     // ── SYNC COMMUNICATION ──────────────────────────────────────────────────
 
-    private fun sendSyncEventToPeer(event: SyncEvent) {
-        try {
-            val json = JSONObject().apply {
-                put("type", "SYNC_EVENT")
-                put("eventId", event.eventId)
-                put("sessionId", event.sessionId)
-                put("senderId", event.senderId)
-                put("eventType", event.eventType.name)
-                put("timelinePositionMs", event.timelinePositionMs)
-                put("state", event.state.name)
-                put("timestamp", event.timestamp)
-                put("driftMs", event.driftMs)
-            }
+    private fun syncEventPayload(event: SyncEvent): JSONObject = JSONObject()
+        .put("eventId", event.eventId)
+        .put("sessionId", event.sessionId)
+        .put("senderId", event.senderId)
+        .put("eventType", event.eventType.name)
+        .put("timelinePositionMs", event.timelinePositionMs)
+        .put("state", event.state.name)
+        .put("timestamp", event.timestamp)
+        .put("driftMs", event.driftMs)
 
-            // Send via socket
-            // TODO: Integrate with actual socket send
-            Log.d(TAG, "Sync event sent: ${event.eventType}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error sending sync event", e)
+    private suspend fun postSyncEvent(event: SyncEvent): Boolean = signalingInitialized &&
+        networkEngine.sendControlSignal(
+            "watch_sync_event",
+            syncEventPayload(event),
+            oneTimeWatchConsent = true
+        )
+
+    private fun sendSyncEventToPeer(event: SyncEvent) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val sent = runCatching { postSyncEvent(event) }.getOrDefault(false)
+            if (!sent) {
+                uiHandler.post {
+                    tvStatus.text = "Not sent: no authenticated ciphertext-only signaling route is available. Playback remains local."
+                }
+            }
         }
     }
 

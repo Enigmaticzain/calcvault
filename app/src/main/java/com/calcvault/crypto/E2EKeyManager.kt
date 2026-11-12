@@ -10,9 +10,10 @@ import javax.crypto.spec.*
 import java.util.Base64
 
 /**
- * E2EKeyManager (V6 - Enhanced Privacy & Randomized Padding)
+ * Unauthenticated ECDH/AES-GCM primitive retained for existing local crypto call sites.
+ * It is not a peer-authenticated protocol and is not wired to the network content transport.
  */
-class E2EKeyManager private constructor() {
+class E2EKeyManager internal constructor() {
 
     companion object {
         private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
@@ -33,7 +34,6 @@ class E2EKeyManager private constructor() {
     private var sessionKey: SecretKey? = null
     private var sessionEstablishedAt: Long = 0
     private var ephemeralKeyPair: KeyPair? = null
-    private var partnerPublicKey: PublicKey? = null
     private var forceRotation: Boolean = false
 
     fun generateIdentityKeypair() {
@@ -90,6 +90,7 @@ class E2EKeyManager private constructor() {
         return deviceId.chunked(4).joinToString(":")
     }
 
+    @Synchronized
     fun startEphemeralExchange(): String {
         val kpg = KeyPairGenerator.getInstance(ALGORITHM_EC)
         kpg.initialize(ECGenParameterSpec(CURVE), SecureRandom())
@@ -97,73 +98,134 @@ class E2EKeyManager private constructor() {
         return Base64.getEncoder().encodeToString(ephemeralKeyPair!!.public.encoded)
     }
 
+    @Synchronized
     fun completeEphemeralExchange(partnerEphemeralPubKeyBase64: String) {
         val keyBytes = Base64.getDecoder().decode(partnerEphemeralPubKeyBase64)
         val keySpec = java.security.spec.X509EncodedKeySpec(keyBytes)
         val partnerKey = KeyFactory.getInstance(ALGORITHM_EC).generatePublic(keySpec)
 
-        val localPriv = ephemeralKeyPair?.private
+        val localKeyPair = ephemeralKeyPair
             ?: throw IllegalStateException("Call startEphemeralExchange first")
 
         val ka = KeyAgreement.getInstance(ALGORITHM_ECDH)
-        ka.init(localPriv)
+        ka.init(localKeyPair.private)
         ka.doPhase(partnerKey, true)
         val sharedSecret = ka.generateSecret()
+        val localPublicKey = localKeyPair.public.encoded
+        val partnerPublicKey = keyBytes
+        val transcriptSalt = deriveTranscriptSalt(localPublicKey, partnerPublicKey)
 
-        sessionKey = deriveFreshSessionKey(sharedSecret)
-        sessionEstablishedAt = System.currentTimeMillis()
-        forceRotation = false
-
-        sharedSecret.fill(0)
-        ephemeralKeyPair = null
+        try {
+            sessionKey = deriveFreshSessionKey(sharedSecret, transcriptSalt)
+            sessionEstablishedAt = System.currentTimeMillis()
+            forceRotation = false
+        } finally {
+            sharedSecret.fill(0)
+            transcriptSalt.fill(0)
+            ephemeralKeyPair = null
+        }
     }
 
-    private fun deriveFreshSessionKey(ikm: ByteArray): SecretKey {
-        val salt = ByteArray(32).also { SecureRandom().nextBytes(it) }
+    /** Both peers hash the same canonically ordered ephemeral public keys as the HKDF salt. */
+    private fun deriveTranscriptSalt(localPublicKey: ByteArray, partnerPublicKey: ByteArray): ByteArray {
+        val (first, second) = if (compareUnsigned(localPublicKey, partnerPublicKey) <= 0) {
+            localPublicKey to partnerPublicKey
+        } else {
+            partnerPublicKey to localPublicKey
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update("calcvault-ephemeral-exchange-v6".toByteArray(Charsets.UTF_8))
+        digest.update(first.size.toLengthPrefix())
+        digest.update(first)
+        digest.update(second.size.toLengthPrefix())
+        digest.update(second)
+        return digest.digest()
+    }
+
+    private fun compareUnsigned(left: ByteArray, right: ByteArray): Int {
+        val commonLength = minOf(left.size, right.size)
+        for (index in 0 until commonLength) {
+            val difference = (left[index].toInt() and 0xFF) - (right[index].toInt() and 0xFF)
+            if (difference != 0) return difference
+        }
+        return left.size.compareTo(right.size)
+    }
+
+    private fun Int.toLengthPrefix(): ByteArray = byteArrayOf(
+        (this ushr 24).toByte(),
+        (this ushr 16).toByte(),
+        (this ushr 8).toByte(),
+        this.toByte()
+    )
+
+    private fun deriveFreshSessionKey(ikm: ByteArray, salt: ByteArray): SecretKey {
         val mac = Mac.getInstance("HmacSHA256")
         mac.init(SecretKeySpec(salt, "HmacSHA256"))
         val prk = mac.doFinal(ikm)
 
-        mac.init(SecretKeySpec(prk, "HmacSHA256"))
-        val info = HKDF_INFO.toByteArray(Charsets.UTF_8)
-        val okm = mac.doFinal(info + byteArrayOf(0x01))
-
-        return SecretKeySpec(okm.copyOf(32), "AES")
+        return try {
+            mac.init(SecretKeySpec(prk, "HmacSHA256"))
+            val info = HKDF_INFO.toByteArray(Charsets.UTF_8)
+            val okm = mac.doFinal(info + byteArrayOf(0x01))
+            val keyBytes = okm.copyOf(32)
+            try {
+                SecretKeySpec(keyBytes, "AES")
+            } finally {
+                keyBytes.fill(0)
+                okm.fill(0)
+            }
+        } finally {
+            prk.fill(0)
+        }
     }
 
+    @Synchronized
     fun needsRotation(): Boolean {
         if (sessionKey == null) return true
         if (forceRotation) return true
         return (System.currentTimeMillis() - sessionEstablishedAt) > SESSION_ROTATION_MS
     }
 
+    @Synchronized
     fun triggerRotation() {
         forceRotation = true
     }
 
+    @Synchronized
     fun encrypt(plaintext: ByteArray): ByteArray {
         val key = sessionKey ?: throw IllegalStateException("Handshake required")
         val iv = ByteArray(GCM_IV_LEN).also { SecureRandom().nextBytes(it) }
         val spec = GCMParameterSpec(GCM_TAG_LEN, iv)
-
-        // Requirement 1: Randomized Adaptive Padding
         val paddedPlaintext = applyAdaptivePadding(plaintext)
 
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, key, spec)
-        return iv + cipher.doFinal(paddedPlaintext)
+        return try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, key, spec)
+            iv + cipher.doFinal(paddedPlaintext)
+        } finally {
+            paddedPlaintext.fill(0)
+        }
     }
 
+    @Synchronized
     fun decrypt(blob: ByteArray): ByteArray {
         val key = sessionKey ?: throw IllegalStateException("No active session key")
+        val minimumBlobSize = GCM_IV_LEN + GCM_TAG_LEN / 8 + 256
+        if (blob.size < minimumBlobSize || (blob.size - GCM_IV_LEN - GCM_TAG_LEN / 8) % 256 != 0) {
+            throw IllegalArgumentException("Invalid encrypted payload envelope")
+        }
         val iv = blob.copyOfRange(0, GCM_IV_LEN)
-        val ct = blob.copyOfRange(GCM_IV_LEN, blob.size)
+        val ciphertextAndTag = blob.copyOfRange(GCM_IV_LEN, blob.size)
         val spec = GCMParameterSpec(GCM_TAG_LEN, iv)
 
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, key, spec)
-        val padded = cipher.doFinal(ct)
-        return removeAdaptivePadding(padded)
+        val padded = cipher.doFinal(ciphertextAndTag)
+        return try {
+            removeAdaptivePadding(padded)
+        } finally {
+            padded.fill(0)
+        }
     }
 
     /**
@@ -185,8 +247,12 @@ class E2EKeyManager private constructor() {
 
         // Fill padding with random bytes instead of zeros or fixed patterns
         val padBytes = ByteArray(paddingLen)
-        random.nextBytes(padBytes)
-        System.arraycopy(padBytes, 0, result, data.size, paddingLen)
+        try {
+            random.nextBytes(padBytes)
+            System.arraycopy(padBytes, 0, result, data.size, paddingLen)
+        } finally {
+            padBytes.fill(0)
+        }
 
         // Store padding length in last 2 bytes (Big Endian)
         result[alignedSize - 2] = (paddingLen shr 8).toByte()
@@ -196,15 +262,21 @@ class E2EKeyManager private constructor() {
     }
 
     private fun removeAdaptivePadding(padded: ByteArray): ByteArray {
-        if (padded.size < 2) return padded
-        val paddingLen = ((padded[padded.size - 2].toInt() and 0xFF) shl 8) or (padded[padded.size - 1].toInt() and 0xFF)
-
-        if (paddingLen < 0 || paddingLen > padded.size - 2) return padded
+        if (padded.size < 256 || padded.size % 256 != 0) {
+            throw IllegalArgumentException("Invalid padded plaintext")
+        }
+        val paddingLen = ((padded[padded.size - 2].toInt() and 0xFF) shl 8) or
+            (padded[padded.size - 1].toInt() and 0xFF)
+        if (paddingLen < 32 || paddingLen > padded.size - 2) {
+            throw IllegalArgumentException("Invalid adaptive padding length")
+        }
         return padded.copyOfRange(0, padded.size - paddingLen - 2)
     }
 
+    @Synchronized
     fun hasActiveSession(): Boolean = sessionKey != null && !needsRotation()
 
+    @Synchronized
     fun clearSession() {
         sessionKey = null
         ephemeralKeyPair = null

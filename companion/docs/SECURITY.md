@@ -34,17 +34,18 @@
 5. Network exposure
 - No cloud dependencies.
 - No open unauthenticated API route for operational actions.
-- Optional LAN transport still uses protocol-level encryption.
+- Direct LAN bridge transport is disabled and rejected until an Android File Sharing privacy route with explicit IP disclosure is integrated.
+- The supported companion transport is USB/ADB loopback; it is a local companion path, not the partner messaging/file-sharing route.
 
 ## Residual Risks
 
-- LAN mode over `ws://` relies on protocol-layer encryption; use `wss://` when possible.
+- LAN mode is not available in the current implementation. Do not re-enable it without per-feature consent, explicit IP disclosure, and validation of the encrypted file route.
 - If local browser/profile malware steals session tokens during active session, attacker could issue local API calls.
 - USB security assumes trusted `adb` environment and authorized USB debugging state.
 
 ## Operational Recommendations
 
-- Disable LAN transport in high-risk environments (`CV_ENABLE_NETWORK_TRANSPORT=false`).
+- Keep LAN transport disabled; it is currently rejected in code and has no `CV_ENABLE_NETWORK_TRANSPORT` override.
 - Keep sessions short (`CV_SESSION_TTL_MS`) and disconnect when idle.
 - Require biometric/passcode confirmation on phone before each privileged operation.
 - Pin allowed desktop fingerprints on phone for stronger device binding.

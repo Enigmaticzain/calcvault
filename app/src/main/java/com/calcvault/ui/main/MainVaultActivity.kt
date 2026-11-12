@@ -19,9 +19,7 @@ import com.calcvault.storage.USBStorageEngine
 import com.calcvault.ui.ambient.AmbientAnimationView
 import com.calcvault.ui.calculator.CalculatorActivity
 import com.calcvault.ui.chat.ChatActivity
-import com.calcvault.ui.call.IncomingCallLauncher
 import com.calcvault.ui.common.GlassUi
-import com.calcvault.ui.listen.IncomingListenLauncher
 import com.calcvault.ui.listen.ListenTogetherActivity
 import com.calcvault.ui.media.MediaActivity
 import com.calcvault.ui.media.RecordingsActivity
@@ -34,6 +32,7 @@ import com.calcvault.ui.filters.FilterSettingsActivity
 import com.calcvault.ui.vault.VaultFilesActivity
 import com.calcvault.watchtogether.WatchTogetherActivity
 import com.calcvault.house.DualCompanionHouseActivity
+import com.calcvault.utils.PairedUserIdentity
 import com.calcvault.utils.SessionManager
 
 class MainVaultActivity : AppCompatActivity() {
@@ -44,10 +43,6 @@ class MainVaultActivity : AppCompatActivity() {
     private lateinit var networkEngine: NetworkMessageEngine
     private var rootLayout: FrameLayout? = null
     private var partnerUserId: String = "sanu"
-
-    companion object {
-        private const val DEFAULT_SIGNALING = "https://calcvault-signal.onrender.com"
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -61,32 +56,13 @@ class MainVaultActivity : AppCompatActivity() {
     }
 
     private fun initNetworkEngine() {
-        val localUserId = SessionManager.localUserId.ifBlank { "zain" }
+        val localUserId = SessionManager.localUserId.ifBlank { PairedUserIdentity.USER_A }
         partnerUserId = SessionManager.partnerUserId.ifBlank {
-            if (localUserId == "zain") "sanu" else "zain"
+            PairedUserIdentity.partnerId(localUserId) ?: PairedUserIdentity.USER_B
         }
-        
-        networkEngine.initialize(
-            localUserId,
-            partnerUserId,
-            SessionManager.signalingUrl.ifBlank { DEFAULT_SIGNALING }
-        )
-        networkEngine.onControlSignalReceived = { signal ->
-            runOnUiThread {
-                val handledCall = IncomingCallLauncher.launchIfNeeded(
-                    this,
-                    signal,
-                    partnerUserId
-                )
-                if (!handledCall) {
-                    IncomingListenLauncher.launchIfNeeded(
-                        this,
-                        signal,
-                        partnerUserId
-                    )
-                }
-            }
-        }
+        // No authenticated ciphertext-only signaling adapter exists. Do not register,
+        // poll, or accept incoming call/sync signals from the configured HTTPS service.
+        networkEngine.disconnect()
     }
 
     private fun refreshUI() {
@@ -312,15 +288,17 @@ class MainVaultActivity : AppCompatActivity() {
     }
 
     private fun showCallChooser() {
-        val options = arrayOf("Voice Call", "Video Call")
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Initiate Secure Call")
-            .setItems(options) { _, which ->
-                val intent = Intent(this, com.calcvault.ui.call.CallActivity::class.java).apply {
-                    putExtra("is_incoming", false)
-                    putExtra("is_video", which == 1)
-                }
-                safeStart(intent, "Call")
+            .setTitle("Calls unavailable")
+            .setMessage(
+                "Calls are blocked because authenticated, ciphertext-only signaling is not implemented. " +
+                    "Saved TURN or direct-IP consent does not make signaling secure. No microphone/camera " +
+                    "permission, SDP/ICE exchange, media session, or peer-IP connection will be started. " +
+                    "No less-private fallback is attempted."
+            )
+            .setNegativeButton("Close", null)
+            .setPositiveButton("Privacy settings") { _, _ ->
+                safeStart(Intent(this, com.calcvault.ui.settings.PrivacyControlsActivity::class.java), "Privacy controls")
             }
             .show()
     }
@@ -347,6 +325,11 @@ class MainVaultActivity : AppCompatActivity() {
             .setMessage("$feature is currently being configured.")
             .setPositiveButton("OK", null)
             .show()
+    }
+
+    override fun onPause() {
+        networkEngine.disconnect()
+        super.onPause()
     }
 
     override fun onResume() {
