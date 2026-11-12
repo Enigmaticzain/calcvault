@@ -242,7 +242,10 @@ class SettingsActivity : AppCompatActivity() {
         addDivider()
 
         addSectionTitle("📱 Connectivity")
-        
+        addSettingRow("Privacy & Connection Controls", secondary = "Feature routes, IP exposure, blocking, reports") {
+            safeStart(Intent(this, PrivacyControlsActivity::class.java), "Privacy & Connection Controls")
+        }
+
         // --- Added Messaging Connectivity Section ---
         addSectionTitle("Messaging Mode", color = theme.accentColor)
         val mode = if (SessionManager.signalingUrl.isEmpty() || SessionManager.signalingUrl.contains("onrender.com")) "Relay (Render)" 

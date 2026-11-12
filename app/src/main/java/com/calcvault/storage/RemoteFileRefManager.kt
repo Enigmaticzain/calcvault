@@ -186,8 +186,77 @@ class RemoteFileRefManager(private val storageRoot: String = "/calcvault/storage
         return@withContext db?.refs?.toList() ?: emptyList()
     }
 
+    /** Grant one named user future access until the optional expiry time. */
+    suspend fun grantAccess(
+        id: String,
+        ownerId: String,
+        userId: String,
+        expiresAtMs: Long = 0L
+    ): Boolean = withContext(Dispatchers.IO) {
+        val owner = ownerId.trim()
+        val user = userId.trim()
+        if (owner.isBlank() || user.isBlank() || user.equals(owner, ignoreCase = true) ||
+            (expiresAtMs > 0L && expiresAtMs <= System.currentTimeMillis())
+        ) {
+            return@withContext false
+        }
+        if (db == null) load()
+        val refs = db?.refs ?: return@withContext false
+        val index = refs.indexOfFirst { it.id == id && it.owner.equals(owner, ignoreCase = true) }
+        if (index < 0) return@withContext false
+        val ref = refs[index]
+        val grantExpiries = ref.userGrantExpiriesMs.toMutableMap()
+        grantExpiries.keys.filter { it.equals(user, ignoreCase = true) }.forEach { grantExpiries.remove(it) }
+        grantExpiries[user] = expiresAtMs
+        refs[index] = ref.copy(
+            accessState = UserOwnershipManager.AccessState.AVAILABLE,
+            allowedUsers = ref.allowedUsers.filterNot { it.equals(user, ignoreCase = true) },
+            revoked = false,
+            userGrantExpiriesMs = grantExpiries,
+            lastSyncTimestamp = System.currentTimeMillis()
+        )
+        save()
+    }
+
+    /** Revoke future access. Previously downloaded copies cannot be recalled. */
+    suspend fun revokeAccess(id: String, ownerId: String, userId: String? = null): Boolean =
+        withContext(Dispatchers.IO) {
+            val owner = ownerId.trim()
+            if (owner.isBlank()) return@withContext false
+            if (db == null) load()
+            val refs = db?.refs ?: return@withContext false
+            val index = refs.indexOfFirst { it.id == id && it.owner.equals(owner, ignoreCase = true) }
+            if (index < 0) return@withContext false
+            val ref = refs[index]
+            val remainingLegacyUsers = if (userId.isNullOrBlank()) {
+                emptyList()
+            } else {
+                ref.allowedUsers.filterNot { it.equals(userId.trim(), ignoreCase = true) }
+            }
+            val remainingGrants = if (userId.isNullOrBlank()) {
+                emptyMap()
+            } else {
+                ref.userGrantExpiriesMs.filterNot { it.key.equals(userId.trim(), ignoreCase = true) }
+            }
+            if (!userId.isNullOrBlank() && remainingLegacyUsers.size == ref.allowedUsers.size &&
+                remainingGrants.size == ref.userGrantExpiriesMs.size
+            ) {
+                return@withContext false
+            }
+            val hasGrants = remainingLegacyUsers.isNotEmpty() || remainingGrants.isNotEmpty()
+            refs[index] = ref.copy(
+                accessState = if (hasGrants) ref.accessState else UserOwnershipManager.AccessState.LOCKED,
+                allowedUsers = remainingLegacyUsers,
+                revoked = !hasGrants,
+                userGrantExpiriesMs = remainingGrants,
+                lastSyncTimestamp = System.currentTimeMillis()
+            )
+            save()
+        }
+
     /**
-     * Update reference access state
+     * Update reference access state. AVAILABLE does not grant access by itself;
+     * a named, non-expired user grant is still required by [UserOwnershipManager.RemoteFileRef.canAccess].
      */
     suspend fun updateAccessState(
         id: String,

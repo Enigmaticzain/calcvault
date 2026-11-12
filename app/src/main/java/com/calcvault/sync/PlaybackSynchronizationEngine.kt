@@ -5,6 +5,7 @@ import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * PlaybackSynchronizationEngine - Keeps both devices in sync
@@ -39,6 +40,11 @@ class PlaybackSynchronizationEngine {
     // Playback state tracking
     private val lastHostTimeMs = AtomicLong(0L)
     private val lastFollowerTimeMs = AtomicLong(0L)
+    private val lastHostPositionObservedAtMs = AtomicLong(0L)
+    private val estimatedOneWayDelayMs = AtomicLong(0L)
+    private val remoteClockOffsetMs = AtomicLong(0L)
+    private val lastProcessedHostEventTimestampMs = AtomicLong(0L)
+    private val hostPlaybackState = AtomicReference(PlaybackState.IDLE)
     private val currentDrift = AtomicLong(0L)
     private val syncLocked = AtomicBoolean(false)
 
@@ -52,6 +58,7 @@ class PlaybackSynchronizationEngine {
     var onDriftDetected: ((driftMs: Long) -> Unit)? = null
     var onSyncStatusChanged: ((isSynced: Boolean) -> Unit)? = null
     var onSyncEventReceived: ((SyncEvent) -> Unit)? = null
+    var onStateSnapshotRequested: ((SyncEvent) -> Unit)? = null
     var onSyncLocked: (() -> Unit)? = null
     var onSyncLost: (() -> Unit)? = null
 
@@ -70,9 +77,26 @@ class PlaybackSynchronizationEngine {
         userId: String,
         isHost: Boolean
     ) {
+        require(session.sessionId.isNotBlank()) { "Session ID must not be blank" }
+        require(session.host in session.participants) { "Host must be a session participant" }
+        require(userId in session.participants) { "User must be a session participant" }
+        require((isHost && session.host == userId) || (!isHost && session.host != userId)) {
+            "Session role does not match host identity"
+        }
         currentSession = session
         myUserId = userId
         myRole = if (isHost) Role.HOST else Role.FOLLOWER
+        lastHostTimeMs.set(session.currentTimeMs)
+        lastFollowerTimeMs.set(session.currentTimeMs)
+        lastHostPositionObservedAtMs.set(System.currentTimeMillis())
+        hostPlaybackState.set(session.state)
+        estimatedOneWayDelayMs.set(0L)
+        remoteClockOffsetMs.set(0L)
+        lastProcessedHostEventTimestampMs.set(0L)
+        lastEventTime = 0L
+        driftCorrections = 0
+        syncErrors = 0
+        eventHistory.clear()
         syncLocked.set(false)
         currentDrift.set(0L)
 
@@ -92,11 +116,12 @@ class PlaybackSynchronizationEngine {
      */
     fun createPlayEvent(currentTimeMs: Long): SyncEvent {
         check(myRole == Role.HOST) { "Only host can create events" }
+        updateHostPlaybackState(currentTimeMs, PlaybackState.PLAYING)
         val event = SyncEvent(
             sessionId = currentSession?.sessionId ?: "",
             senderId = myUserId,
             eventType = SyncEventType.PLAY,
-            timelinePositionMs = currentTimeMs,
+            timelinePositionMs = currentTimeMs.coerceAtLeast(0L),
             state = PlaybackState.PLAYING,
             timestamp = System.currentTimeMillis()
         )
@@ -109,11 +134,12 @@ class PlaybackSynchronizationEngine {
      */
     fun createPauseEvent(currentTimeMs: Long): SyncEvent {
         check(myRole == Role.HOST) { "Only host can create events" }
+        updateHostPlaybackState(currentTimeMs, PlaybackState.PAUSED)
         val event = SyncEvent(
             sessionId = currentSession?.sessionId ?: "",
             senderId = myUserId,
             eventType = SyncEventType.PAUSE,
-            timelinePositionMs = currentTimeMs,
+            timelinePositionMs = currentTimeMs.coerceAtLeast(0L),
             state = PlaybackState.PAUSED,
             timestamp = System.currentTimeMillis()
         )
@@ -127,12 +153,14 @@ class PlaybackSynchronizationEngine {
      */
     fun createSeekEvent(targetTimeMs: Long): SyncEvent {
         check(myRole == Role.HOST) { "Only host can create events" }
+        val state = hostPlaybackState.get()
+        updateHostPlaybackState(targetTimeMs, state)
         val event = SyncEvent(
             sessionId = currentSession?.sessionId ?: "",
             senderId = myUserId,
             eventType = SyncEventType.SEEK,
-            timelinePositionMs = targetTimeMs,
-            state = currentSession?.state ?: PlaybackState.PAUSED,
+            timelinePositionMs = targetTimeMs.coerceAtLeast(0L),
+            state = state,
             timestamp = System.currentTimeMillis()
         )
         recordEvent(event)
@@ -141,82 +169,133 @@ class PlaybackSynchronizationEngine {
 
     /**
      * ═══════════════════════════════════════════════════════════════════════════
-     * EVENT RECEPTION (Follower processes)
+     * EVENT PROCESSING (Host requests and follower playback events)
      * ═══════════════════════════════════════════════════════════════════════════
      */
 
+    /** Update timing from an authenticated ping/pong exchange on the active transport. */
+    fun updateNetworkTiming(sample: RoundTripTimingSample): NetworkTimingEstimate? {
+        val estimate = WatchSyncMath.estimateTiming(sample) ?: return null
+        estimatedOneWayDelayMs.set(estimate.estimatedOneWayDelayMs)
+        remoteClockOffsetMs.set(estimate.remoteClockOffsetMs)
+        return estimate
+    }
+
     /**
-     * Process an incoming sync event from the host
-     * This is the critical decision point for follower behavior
+     * Hosts can send this after a follower reconnects or requests a resync.
+     * The snapshot contains no movie filename or local path.
+     */
+    fun createStateSnapshot(): SyncEvent {
+        check(myRole == Role.HOST) { "Only host can create a state snapshot" }
+        val session = checkNotNull(currentSession) { "No active watch session" }
+        val now = System.currentTimeMillis()
+        val state = hostPlaybackState.get()
+        val event = SyncEvent(
+            sessionId = session.sessionId,
+            senderId = myUserId,
+            eventType = SyncEventType.STATE_SNAPSHOT,
+            timelinePositionMs = WatchSyncMath.projectPositionNow(
+                lastHostTimeMs.get(),
+                lastHostPositionObservedAtMs.get(),
+                now,
+                state
+            ),
+            state = state,
+            timestamp = now
+        )
+        recordEvent(event)
+        return event
+    }
+
+    /**
+     * Process a transport-independent playback event. The transport adapter is
+     * responsible for authenticating the event before calling this method.
      */
     fun processSyncEvent(event: SyncEvent) {
-        check(myRole == Role.FOLLOWER) { "Only follower processes events" }
-
-        if (event.isStale()) {
-            Log.w(TAG, "Stale event received: ${event.eventType}")
+        val session = currentSession ?: run {
+            syncErrors++
+            return
+        }
+        val localNow = System.currentTimeMillis()
+        if (event.sessionId != session.sessionId || event.senderId !in session.participants) {
+            syncErrors++
+            return
+        }
+        if (event.eventId in eventHistory || WatchSyncMath.isEventStale(
+                remoteEventTimestampMs = event.timestamp,
+                localNowMs = localNow,
+                remoteMinusLocalClockOffsetMs = remoteClockOffsetMs.get()
+            )
+        ) {
             syncErrors++
             return
         }
 
-        recordEvent(event)
-        lastHostTimeMs.set(event.timelinePositionMs)
-        lastEventTime = System.currentTimeMillis()
-
-        when (event.eventType) {
-            SyncEventType.PLAY -> {
-                Log.d(TAG, "PLAY event received at ${event.timelinePositionMs}ms")
-                onPlaybackAdjustmentNeeded?.invoke(
-                    event.timelinePositionMs,
-                    SyncEventType.PLAY
-                )
+        if (myRole == Role.HOST) {
+            if (event.senderId == myUserId ||
+                event.eventType !in setOf(SyncEventType.SYNC_REQUEST, SyncEventType.DRIFT_REPORT)
+            ) {
+                syncErrors++
+                return
             }
-
-            SyncEventType.PAUSE -> {
-                Log.d(TAG, "PAUSE event received")
-                onPlaybackAdjustmentNeeded?.invoke(
-                    event.timelinePositionMs,
-                    SyncEventType.PAUSE
-                )
+            if (event.eventType == SyncEventType.SYNC_REQUEST) {
+                onStateSnapshotRequested?.invoke(createStateSnapshot())
             }
-
-            SyncEventType.SEEK -> {
-                Log.d(TAG, "SEEK event to ${event.timelinePositionMs}ms")
-                onPlaybackAdjustmentNeeded?.invoke(
-                    event.timelinePositionMs,
-                    SyncEventType.SEEK
-                )
-            }
-
-            SyncEventType.BUFFERING -> {
-                Log.d(TAG, "BUFFERING event received")
-                onPlaybackAdjustmentNeeded?.invoke(
-                    event.timelinePositionMs,
-                    SyncEventType.BUFFERING
-                )
-            }
-
-            SyncEventType.BUFFERING_END -> {
-                Log.d(TAG, "BUFFERING_END event")
-                onPlaybackAdjustmentNeeded?.invoke(
-                    event.timelinePositionMs,
-                    SyncEventType.BUFFERING_END
-                )
-            }
-
-            SyncEventType.DRIFT_REPORT -> {
-                Log.d(TAG, "Drift report: ${event.driftMs}ms")
-            }
-
-            SyncEventType.SYNC_REQUEST -> {
-                Log.d(TAG, "Resync requested")
-            }
-
-            SyncEventType.SESSION_END -> {
-                Log.d(TAG, "Session ended by host")
-                endSession()
-            }
+            recordEvent(event)
+            onSyncEventReceived?.invoke(event)
+            return
         }
 
+        if (myRole != Role.FOLLOWER || event.senderId != session.host) {
+            syncErrors++
+            return
+        }
+
+        if (event.eventType == SyncEventType.SYNC_REQUEST ||
+            event.eventType == SyncEventType.DRIFT_REPORT ||
+            event.timestamp < lastProcessedHostEventTimestampMs.get()
+        ) {
+            syncErrors++
+            return
+        }
+
+        val targetPosition = WatchSyncMath.projectPositionAtArrival(
+            positionMs = event.timelinePositionMs,
+            state = event.state,
+            estimatedOneWayDelayMs = estimatedOneWayDelayMs.get()
+        )
+        recordEvent(event)
+        lastProcessedHostEventTimestampMs.set(event.timestamp)
+        lastHostTimeMs.set(targetPosition)
+        lastHostPositionObservedAtMs.set(localNow)
+        hostPlaybackState.set(event.state)
+        lastEventTime = localNow
+        session.currentTimeMs = targetPosition
+        session.state = event.state
+        session.lastUpdatedAt = localNow
+
+        val adjustment = when (event.eventType) {
+            SyncEventType.PLAY -> SyncEventType.PLAY
+            SyncEventType.PAUSE -> SyncEventType.PAUSE
+            SyncEventType.SEEK -> SyncEventType.SEEK
+            SyncEventType.BUFFERING -> SyncEventType.BUFFERING
+            SyncEventType.BUFFERING_END -> SyncEventType.BUFFERING_END
+            SyncEventType.STATE_SNAPSHOT -> when (event.state) {
+                PlaybackState.PLAYING -> SyncEventType.PLAY
+                PlaybackState.PAUSED -> SyncEventType.PAUSE
+                PlaybackState.BUFFERING -> SyncEventType.BUFFERING
+                PlaybackState.ENDED -> SyncEventType.SESSION_END
+                PlaybackState.IDLE, PlaybackState.SEEKING -> SyncEventType.SEEK
+            }
+            SyncEventType.SESSION_END -> SyncEventType.SESSION_END
+            else -> return
+        }
+
+        if (adjustment == SyncEventType.SESSION_END) {
+            endSession()
+        } else {
+            onPlaybackAdjustmentNeeded?.invoke(targetPosition, adjustment)
+        }
         onSyncEventReceived?.invoke(event)
     }
 
@@ -240,11 +319,15 @@ class PlaybackSynchronizationEngine {
      * Drift = follower_time - host_time
      */
     private fun updateDrift() {
-        val hostTime = lastHostTimeMs.get()
+        val hostTime = WatchSyncMath.projectPositionNow(
+            positionAtObservationMs = lastHostTimeMs.get(),
+            observedAtLocalMs = lastHostPositionObservedAtMs.get(),
+            nowLocalMs = System.currentTimeMillis(),
+            state = hostPlaybackState.get()
+        )
         val followerTime = lastFollowerTimeMs.get()
         val drift = followerTime - hostTime
         currentDrift.set(drift)
-
         onDriftDetected?.invoke(drift)
     }
 
@@ -274,8 +357,8 @@ class PlaybackSynchronizationEngine {
      * Start background monitoring of drift
      */
     private fun startDriftMonitoring() {
+        driftMonitorJob?.cancel()
         if (myRole == Role.FOLLOWER) {
-            driftMonitorJob?.cancel()
             driftMonitorJob = scope.launch {
                 while (isActive) {
                     delay(DRIFT_CHECK_INTERVAL)
@@ -388,6 +471,18 @@ class PlaybackSynchronizationEngine {
             val oldestKey = eventHistory.keys.minByOrNull { eventHistory[it]?.timestamp ?: 0L }
             oldestKey?.let { eventHistory.remove(it) }
         }
+    }
+
+    private fun updateHostPlaybackState(positionMs: Long, state: PlaybackState) {
+        val session = checkNotNull(currentSession) { "No active watch session" }
+        val now = System.currentTimeMillis()
+        val safePosition = positionMs.coerceAtLeast(0L)
+        lastHostTimeMs.set(safePosition)
+        lastHostPositionObservedAtMs.set(now)
+        hostPlaybackState.set(state)
+        session.currentTimeMs = safePosition
+        session.state = state
+        session.lastUpdatedAt = now
     }
 
     private fun shouldCorrectDrift(): Boolean {

@@ -101,8 +101,42 @@ class UserOwnershipManager {
         val thumbnailPath: String? = null,
         val accessState: AccessState = AccessState.LOCKED,
         val timestamp: Long = System.currentTimeMillis(),
-        val lastSyncTimestamp: Long = 0L
+        val lastSyncTimestamp: Long = 0L,
+        val allowedUsers: List<String> = emptyList(),
+        val expiresAtMs: Long = 0L,
+        val revoked: Boolean = false,
+        val userGrantExpiriesMs: Map<String, Long> = emptyMap()
     ) {
+        fun canAccess(userId: String, nowMs: Long = System.currentTimeMillis()): Boolean {
+            if (owner.equals(userId, ignoreCase = true)) return true
+            if (revoked || accessState != AccessState.AVAILABLE) return false
+            val explicitGrant = userGrantExpiriesMs.entries.firstOrNull {
+                it.key.equals(userId, ignoreCase = true)
+            }
+            val legacyGrant = if (explicitGrant == null && allowedUsers.any {
+                    it.equals(userId, ignoreCase = true)
+                }
+            ) {
+                expiresAtMs
+            } else {
+                null
+            }
+            val expiry = explicitGrant?.value ?: legacyGrant ?: return false
+            return expiry == 0L || nowMs < expiry
+        }
+
+        fun isGrantExpired(userId: String, nowMs: Long = System.currentTimeMillis()): Boolean {
+            val explicitExpiry = userGrantExpiriesMs.entries.firstOrNull {
+                it.key.equals(userId, ignoreCase = true)
+            }?.value
+            val expiry = explicitExpiry ?: if (allowedUsers.any { it.equals(userId, ignoreCase = true) }) {
+                expiresAtMs
+            } else {
+                null
+            }
+            return expiry != null && expiry > 0L && nowMs >= expiry
+        }
+
         fun toJson(): JSONObject = JSONObject().apply {
             put("id", id)
             put("name", name)
@@ -112,6 +146,12 @@ class UserOwnershipManager {
             put("accessState", accessState.name)
             put("timestamp", timestamp)
             put("lastSyncTimestamp", lastSyncTimestamp)
+            put("allowedUsers", org.json.JSONArray(allowedUsers))
+            put("expiresAtMs", expiresAtMs)
+            put("revoked", revoked)
+            put("userGrantExpiriesMs", JSONObject().apply {
+                userGrantExpiriesMs.forEach { (userId, expiry) -> put(userId, expiry) }
+            })
         }
 
         companion object {
@@ -128,7 +168,19 @@ class UserOwnershipManager {
                         AccessState.LOCKED
                     },
                     timestamp = obj.getLong("timestamp"),
-                    lastSyncTimestamp = obj.optLong("lastSyncTimestamp", 0L)
+                    lastSyncTimestamp = obj.optLong("lastSyncTimestamp", 0L),
+                    allowedUsers = obj.optJSONArray("allowedUsers")?.let { users ->
+                        (0 until users.length()).mapNotNull { index ->
+                            users.optString(index).takeIf { it.isNotBlank() }
+                        }
+                    } ?: emptyList(),
+                    expiresAtMs = obj.optLong("expiresAtMs", 0L),
+                    revoked = obj.optBoolean("revoked", false),
+                    userGrantExpiriesMs = obj.optJSONObject("userGrantExpiriesMs")?.let { grants ->
+                        buildMap {
+                            grants.keys().forEach { userId -> put(userId, grants.optLong(userId, 0L)) }
+                        }
+                    } ?: emptyMap()
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Error parsing RemoteFileRef JSON", e)

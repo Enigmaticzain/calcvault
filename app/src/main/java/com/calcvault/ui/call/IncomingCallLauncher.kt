@@ -12,21 +12,19 @@ object IncomingCallLauncher {
         if (signal.optString("type") != "call_offer") return false
 
         val callId = signal.optString("callId")
-        val callerIp = signal.optString("callerIp")
-        if (callId.isBlank() || callerIp.isBlank() || callId == lastLaunchedCallId) {
+        val fromUser = signal.optString("from")
+        if (callId.isBlank() || fromUser.isBlank() || fromUser != fallbackRemoteUser || callId == lastLaunchedCallId) {
             return false
         }
 
         lastLaunchedCallId = callId
         val isVideo = signal.optString("callType").equals("VIDEO", ignoreCase = true)
-        val fromUser = signal.optString("from").ifBlank { fallbackRemoteUser }
 
         activity.startActivity(
             Intent(activity, CallActivity::class.java).apply {
                 putExtra("is_incoming", true)
                 putExtra("is_video", isVideo)
                 putExtra("call_id", callId)
-                putExtra("caller_ip", callerIp)
                 putExtra("from_user", fromUser)
             }
         )

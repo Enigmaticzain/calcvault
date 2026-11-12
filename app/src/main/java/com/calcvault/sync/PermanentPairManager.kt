@@ -128,4 +128,19 @@ object PermanentPairManager {
     }
 
     fun getPartnerDeviceId(): String = prefs.getString(KEY_PARTNER_DEVICE_ID, "") ?: ""
+
+    /** Remove this device's permanent pair identity; future pairing requires a new explicit setup. */
+    fun forgetPair(): Boolean {
+        val saved = prefs.edit()
+            .remove(KEY_IS_PAIRED)
+            .remove(KEY_MY_ROLE)
+            .remove(KEY_PAIR_TIMESTAMP)
+            .remove(KEY_PARTNER_DEVICE_ID)
+            .commit()
+        SessionManager.localUserId = ""
+        SessionManager.partnerUserId = ""
+        SessionManager.localNickname = ""
+        SessionManager.partnerNickname = ""
+        return saved
+    }
 }

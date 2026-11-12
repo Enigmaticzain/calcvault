@@ -21,7 +21,7 @@ import java.io.File
  */
 class ZainSanuStorageSystem(
     private val context: Context,
-    private val storageRoot: String = "/calcvault/storage"
+    private val storageRoot: String = File(context.filesDir, "calcvault/storage").absolutePath
 ) {
 
     companion object {
@@ -256,15 +256,23 @@ class ZainSanuStorageSystem(
         // Try to find in remote references
         val remoteRef = remoteFileRefManager.getRef(fileId)
         if (remoteRef != null) {
-            val canAccess = remoteRef.accessState == UserOwnershipManager.AccessState.AVAILABLE ||
-                userId == remoteRef.owner
+            val canAccess = remoteRef.canAccess(userId)
+            val effectiveState = if (canAccess) {
+                UserOwnershipManager.AccessState.AVAILABLE
+            } else {
+                UserOwnershipManager.AccessState.LOCKED
+            }
 
             return@withContext AccessCheckResult(
                 canAccess = canAccess,
                 isRemote = true,
                 owner = remoteRef.owner,
-                accessState = remoteRef.accessState,
-                prompt = ownershipManager.getAccessPrompt(remoteRef.owner, userId)
+                accessState = effectiveState,
+                prompt = if (remoteRef.isGrantExpired(userId)) {
+                    "This file grant has expired. Ask the owner to grant access again."
+                } else {
+                    ownershipManager.getAccessPrompt(remoteRef.owner, userId)
+                }
             )
         }
 

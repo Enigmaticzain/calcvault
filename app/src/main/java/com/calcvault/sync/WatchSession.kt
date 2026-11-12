@@ -89,6 +89,7 @@ enum class SyncEventType {
     BUFFERING_END, // Buffering complete
     DRIFT_REPORT, // Follower reports time drift
     SYNC_REQUEST, // Follower requests resync
+    STATE_SNAPSHOT, // Host restores playback state after reconnect
     SESSION_END // Host ended session
 }
 

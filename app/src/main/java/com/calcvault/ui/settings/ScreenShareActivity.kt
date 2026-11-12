@@ -21,6 +21,10 @@ import com.calcvault.databinding.ActivityScreenshareBinding
 import com.calcvault.emotional.themes.ThemeApplicator
 import com.calcvault.messaging.AppendOnlyMessageDB
 import com.calcvault.network.NetworkMessageEngine
+import com.calcvault.network.privacy.PrivacyControlStore
+import com.calcvault.network.privacy.PrivacyFeature
+import com.calcvault.network.webrtc.WebRtcIcePolicy
+import com.calcvault.network.webrtc.WebRtcIceSettingsStore
 import com.calcvault.storage.USBStorageEngine
 import com.calcvault.utils.SessionManager
 import org.webrtc.EglBase
@@ -86,9 +90,19 @@ class ScreenShareActivity : AppCompatActivity() {
             SessionManager.signalingUrl.ifBlank { DEFAULT_SIGNALING }
         )
 
-        screenShareEngine = ScreenShareEngine(this, networkEngine, eglBase.eglBaseContext)
+        val privacyMode = PrivacyControlStore(this).mode(PrivacyFeature.SCREEN_SHARING)
+        val iceSettings = WebRtcIceSettingsStore(this).load()
+        screenShareEngine = ScreenShareEngine(
+            this,
+            networkEngine,
+            eglBase.eglBaseContext,
+            privacyMode,
+            iceSettings
+        )
         setupViews()
         setupEngineListeners()
+        val iceRoute = WebRtcIcePolicy.plan(privacyMode, iceSettings)
+        binding.statusText.text = iceRoute.explanation
 
         if (role == ROLE_SHARER) {
             binding.statusText.text = "Waiting for capture permission..."
@@ -312,7 +326,7 @@ class ScreenShareActivity : AppCompatActivity() {
 
         if (resultCode == Activity.RESULT_OK && data != null) {
             shareState = ScreenShareState.ACTIVE
-            binding.statusText.text = "Starting secure Live Assist..."
+            binding.statusText.text = "Starting screen share; peer identity is not verified by this app"
             screenShareEngine.initSharer(
                 partnerId = partnerId,
                 mediaProjectionIntent = data,

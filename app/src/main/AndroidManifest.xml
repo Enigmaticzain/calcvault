@@ -117,6 +117,9 @@
         <activity android:name=".ui.settings.SettingsActivity"
             android:exported="false" android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".ui.settings.PrivacyControlsActivity"
+            android:exported="false" android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- Moved to disabled_sources -->
         <!-- <activity android:name=".ui.sync.SyncActivity"

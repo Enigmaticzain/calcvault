@@ -9,6 +9,7 @@ import android.util.Base64
 import com.calcvault.BuildConfig
 import com.calcvault.messaging.AppendOnlyMessageDB
 import com.calcvault.messaging.MessageRecord
+import com.calcvault.network.privacy.SafetyContactStore
 import com.calcvault.storage.MediaChunkManager
 import com.calcvault.storage.USBStorageEngine
 import com.calcvault.storage.provider.StorageManager
@@ -39,6 +40,7 @@ class NetworkMessageEngine(
     private val messageDB: AppendOnlyMessageDB,
     private val storageEngine: USBStorageEngine
 ) {
+    private val safetyContacts = SafetyContactStore(context)
     enum class TransportMode { P2P_HOST, P2P_SRFLX, RELAY, OFFLINE }
     enum class ConnectionState { DISCONNECTED, CONNECTING, CONNECTED }
 
@@ -409,6 +411,7 @@ class NetworkMessageEngine(
             .ifBlank { json.optString("device_id") }
             .ifBlank { json.optString("deviceId") }
             .ifBlank { partnerUserId }
+        if (safetyContacts.isBlocked(from)) return
         when (type) {
             "presence" -> {
                 val status = json.optString("status")
@@ -425,7 +428,9 @@ class NetworkMessageEngine(
                 onControlSignalReceived?.invoke(json)
             }
             else -> {
-                if (type.startsWith("listen_") || type.startsWith("screenshare_") || type == "care_drop") {
+                if (type.startsWith("listen_") || type.startsWith("screenshare_") ||
+                    type.startsWith("watch_") || type == "care_drop"
+                ) {
                     markPartnerSeen(from)
                     onControlSignalReceived?.invoke(json)
                 } else if (json.has("signal") || json.has("sdp") || json.has("candidate") || json.has("callId")) {
@@ -441,6 +446,7 @@ class NetworkMessageEngine(
     private suspend fun handleRelayPayload(json: JSONObject) {
         val messageId = json.optLong("mid", json.optLong("messageId", 0L))
         val senderId = json.optString("from").ifBlank { json.optString("sid").ifBlank { partnerUserId } }
+        if (safetyContacts.isBlocked(senderId)) return
         val type = json.optInt("type", AppendOnlyMessageDB.MSG_TEXT)
         val timestamp = json.optLong("ts", System.currentTimeMillis())
         val chunkCount = json.optInt("chunkCount", 1).coerceAtLeast(1)

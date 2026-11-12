@@ -72,6 +72,8 @@ class MainVaultActivity : AppCompatActivity() {
             SessionManager.signalingUrl.ifBlank { DEFAULT_SIGNALING }
         )
         networkEngine.onControlSignalReceived = { signal ->
+            com.calcvault.ui.call.CallSignalInbox.offer(signal)
+            com.calcvault.ui.watch.WatchSignalInbox.offer(signal)
             runOnUiThread {
                 val handledCall = IncomingCallLauncher.launchIfNeeded(
                     this,
@@ -79,11 +81,18 @@ class MainVaultActivity : AppCompatActivity() {
                     partnerUserId
                 )
                 if (!handledCall) {
-                    IncomingListenLauncher.launchIfNeeded(
+                    val handledWatch = com.calcvault.ui.watch.IncomingWatchLauncher.promptIfNeeded(
                         this,
                         signal,
                         partnerUserId
                     )
+                    if (!handledWatch) {
+                        IncomingListenLauncher.launchIfNeeded(
+                            this,
+                            signal,
+                            partnerUserId
+                        )
+                    }
                 }
             }
         }
