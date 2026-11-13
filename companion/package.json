@@ -1,18 +1,47 @@
 {
   "name": "calcvault-companion",
   "version": "1.0.0",
-  "description": "Local-first secure desktop/web companion for CalcVault Android",
+  "description": "Local-first secure desktop companion for CalcVault Android (USB/ADB Only)",
+  "author": "CalcVault Security <security@calcvault.org>",
+  "homepage": "https://github.com/Enigmaticzain/calcvault",
   "type": "module",
-  "main": "src/main.js",
+  "main": "src/electron-main.js",
   "scripts": {
     "start": "node src/main.js",
     "dev": "NODE_ENV=development node src/main.js",
-    "validate": "node tests/run-validation.js"
+    "validate": "node tests/run-validation.js",
+    "electron": "electron .",
+    "build:deb": "electron-builder --linux deb --x64"
   },
   "dependencies": {
     "busboy": "^1.6.0",
     "express": "^4.21.2",
     "qrcode": "^1.5.4",
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^45.3.1",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.calcvault.companion",
+    "productName": "CalcVault Companion",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "web/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "deb"
+      ],
+      "category": "Utility",
+      "maintainer": "CalcVault Security <security@calcvault.org>",
+      "synopsis": "Local-first secure desktop companion for CalcVault Android (USB/ADB Only)",
+      "description": "Local-first secure companion application providing USB/ADB encrypted file vault transfer and backup management."
+    }
   }
 }
