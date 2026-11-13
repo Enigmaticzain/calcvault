@@ -220,25 +220,45 @@ class HouseEnvironment(
         // ───────────────────────────────────────────────────────────────────
         val bathroomBounds = RectF(0f, 0f, screenWidth.toFloat(), screenHeight.toFloat())
         val bathroomZones = listOf(
-            InteractionZone("shower_zone", ZoneType.SHOWER,
+            InteractionZone(
+                "shower_zone",
+                ZoneType.SHOWER,
                 RectF(screenWidth * 0.05f, screenHeight * 0.2f, screenWidth * 0.35f, screenHeight * 0.55f),
-                HouseRoom.BATHROOM, "shower", true,
+                HouseRoom.BATHROOM,
+                "shower",
+                true,
                 PointF(screenWidth * 0.2f, screenHeight * 0.38f),
-                PointF(screenWidth * 0.2f, screenHeight * 0.42f)),
-            InteractionZone("bathtub_zone", ZoneType.BATHTUB,
+                PointF(screenWidth * 0.2f, screenHeight * 0.42f)
+            ),
+            InteractionZone(
+                "bathtub_zone",
+                ZoneType.BATHTUB,
                 RectF(screenWidth * 0.4f, screenHeight * 0.2f, screenWidth * 0.95f, screenHeight * 0.5f),
-                HouseRoom.BATHROOM, "bathe", true,
+                HouseRoom.BATHROOM,
+                "bathe",
+                true,
                 PointF(screenWidth * 0.6f, screenHeight * 0.35f),
-                PointF(screenWidth * 0.75f, screenHeight * 0.35f)),
-            InteractionZone("toilet_zone", ZoneType.TOILET,
+                PointF(screenWidth * 0.75f, screenHeight * 0.35f)
+            ),
+            InteractionZone(
+                "toilet_zone",
+                ZoneType.TOILET,
                 RectF(screenWidth * 0.05f, screenHeight * 0.6f, screenWidth * 0.35f, screenHeight * 0.85f),
-                HouseRoom.BATHROOM, "toilet", false,
-                PointF(screenWidth * 0.2f, screenHeight * 0.72f)),
-            InteractionZone("sink_zone", ZoneType.SINK,
+                HouseRoom.BATHROOM,
+                "toilet",
+                false,
+                PointF(screenWidth * 0.2f, screenHeight * 0.72f)
+            ),
+            InteractionZone(
+                "sink_zone",
+                ZoneType.SINK,
                 RectF(screenWidth * 0.5f, screenHeight * 0.55f, screenWidth * 0.9f, screenHeight * 0.75f),
-                HouseRoom.BATHROOM, "brush", true,
+                HouseRoom.BATHROOM,
+                "brush",
+                true,
                 PointF(screenWidth * 0.65f, screenHeight * 0.65f),
-                PointF(screenWidth * 0.78f, screenHeight * 0.65f))
+                PointF(screenWidth * 0.78f, screenHeight * 0.65f)
+            )
         )
         roomLayouts[HouseRoom.BATHROOM] = RoomLayout(
             room = HouseRoom.BATHROOM,
@@ -257,24 +277,44 @@ class HouseEnvironment(
         // ───────────────────────────────────────────────────────────────────
         val gardenBounds = RectF(0f, 0f, screenWidth.toFloat(), screenHeight.toFloat())
         val gardenZones = listOf(
-            InteractionZone("garden_bench", ZoneType.GARDEN_BENCH,
+            InteractionZone(
+                "garden_bench",
+                ZoneType.GARDEN_BENCH,
                 RectF(screenWidth * 0.05f, screenHeight * 0.3f, screenWidth * 0.4f, screenHeight * 0.5f),
-                HouseRoom.GARDEN, "sit", true,
+                HouseRoom.GARDEN,
+                "sit",
+                true,
                 PointF(screenWidth * 0.18f, screenHeight * 0.4f),
-                PointF(screenWidth * 0.32f, screenHeight * 0.4f)),
-            InteractionZone("trampoline_zone", ZoneType.TRAMPOLINE,
+                PointF(screenWidth * 0.32f, screenHeight * 0.4f)
+            ),
+            InteractionZone(
+                "trampoline_zone",
+                ZoneType.TRAMPOLINE,
                 RectF(screenWidth * 0.5f, screenHeight * 0.25f, screenWidth * 0.95f, screenHeight * 0.55f),
-                HouseRoom.GARDEN, "jump", true,
-                PointF(screenWidth * 0.72f, screenHeight * 0.4f)),
-            InteractionZone("game_console", ZoneType.MINI_GAME_CONSOLE,
+                HouseRoom.GARDEN,
+                "jump",
+                true,
+                PointF(screenWidth * 0.72f, screenHeight * 0.4f)
+            ),
+            InteractionZone(
+                "game_console",
+                ZoneType.MINI_GAME_CONSOLE,
                 RectF(screenWidth * 0.05f, screenHeight * 0.6f, screenWidth * 0.45f, screenHeight * 0.85f),
-                HouseRoom.GARDEN, "play", true,
+                HouseRoom.GARDEN,
+                "play",
+                true,
                 PointF(screenWidth * 0.25f, screenHeight * 0.72f),
-                PointF(screenWidth * 0.35f, screenHeight * 0.72f)),
-            InteractionZone("flower_bed", ZoneType.FLOWER_BED,
+                PointF(screenWidth * 0.35f, screenHeight * 0.72f)
+            ),
+            InteractionZone(
+                "flower_bed",
+                ZoneType.FLOWER_BED,
                 RectF(screenWidth * 0.55f, screenHeight * 0.6f, screenWidth * 0.95f, screenHeight * 0.85f),
-                HouseRoom.GARDEN, "garden", false,
-                PointF(screenWidth * 0.75f, screenHeight * 0.72f))
+                HouseRoom.GARDEN,
+                "garden",
+                false,
+                PointF(screenWidth * 0.75f, screenHeight * 0.72f)
+            )
         )
         roomLayouts[HouseRoom.GARDEN] = RoomLayout(
             room = HouseRoom.GARDEN,

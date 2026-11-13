@@ -58,7 +58,6 @@ class PulseRing(var x: Float, var y: Float, var currentRadius: Float, var maxRad
     var expandSpeed: Float = 20f + Random.nextFloat() * 30f
 }
 
-
 data class Star(val x: Float, val y: Float, val size: Float, val seed: Double)
 
 data class ShootingStar(

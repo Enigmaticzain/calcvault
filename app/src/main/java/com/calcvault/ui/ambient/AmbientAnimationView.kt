@@ -24,7 +24,7 @@ class AmbientAnimationView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
-    enum class Theme { 
+    enum class Theme {
         CINEMATIC_NATURE, EMOTIONAL_COMPANION,
         SANCTUARY_STARGAZING, SANCTUARY_RAINYCAFE, SANCTUARY_SUNRISE,
         SANCTUARY_AUTUMNPARK, SANCTUARY_SUNSETBEACH, SANCTUARY_PEACEFULSNOW,
@@ -134,22 +134,33 @@ class AmbientAnimationView @JvmOverloads constructor(
     ) {
         LEAVES(
             Color.parseColor("#99D35400"), // Orange-ish leaves
-            Color.parseColor("#AAFFC107"), Color.parseColor("#74B9FF"), // Bright sky top
+            Color.parseColor("#AAFFC107"),
+            Color.parseColor("#74B9FF"), // Bright sky top
             Color.parseColor("#81ECEC"), // Bright sky bot
             Color.parseColor("#2D3436"), // Dark minimalist hills
-            Color.parseColor("#22FFD54F"), Color.parseColor("#66FFEB3B"), Color.parseColor("#00000000")
+            Color.parseColor("#22FFD54F"),
+            Color.parseColor("#66FFEB3B"),
+            Color.parseColor("#00000000")
         ),
         SNOW(
-            Color.WHITE, Color.parseColor("#AAFF5252"), Color.parseColor("#0F0C29"), // Night sky top
+            Color.WHITE,
+            Color.parseColor("#AAFF5252"),
+            Color.parseColor("#0F0C29"), // Night sky top
             Color.parseColor("#302B63"), // Night sky bot
             Color.parseColor("#24243E"), // Deep blue hills
-            Color.parseColor("#55FFFFFF"), Color.parseColor("#00FFFFFF"), Color.parseColor("#154CAF50")
+            Color.parseColor("#55FFFFFF"),
+            Color.parseColor("#00FFFFFF"),
+            Color.parseColor("#154CAF50")
         ),
         RAIN(
-            Color.parseColor("#88FFFFFF"), Color.parseColor("#AA00BCD4"), Color.parseColor("#3D3D3D"), // Storm sky top
+            Color.parseColor("#88FFFFFF"),
+            Color.parseColor("#AA00BCD4"),
+            Color.parseColor("#3D3D3D"), // Storm sky top
             Color.parseColor("#1B1B1B"), // Storm sky bot
             Color.parseColor("#000000"), // Pitch black hills
-            Color.parseColor("#11FFFFFF"), Color.parseColor("#4481D4FA"), Color.parseColor("#00000000")
+            Color.parseColor("#11FFFFFF"),
+            Color.parseColor("#4481D4FA"),
+            Color.parseColor("#00000000")
         )
     }
 
@@ -258,7 +269,7 @@ class AmbientAnimationView @JvmOverloads constructor(
 
         val h = themeEngineTheme.surfaceColor
         val c = themeEngineTheme.accentColor
-        
+
         leafPaint.color = c; snowPaint.color = c; rainPaint.color = c; emberPaint.color = c
         splashPaint.color = c; celestialPaint.color = themeEngineTheme.primaryText
         shootingStarPaint.color = c; fireflyPaint.color = c; auroraPaint.color = Color.argb(40, Color.red(c), Color.green(c), Color.blue(c))

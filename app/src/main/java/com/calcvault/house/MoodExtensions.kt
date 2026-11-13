@@ -48,25 +48,25 @@ fun EmotionalState.toUserMood(userId: String): UserMood {
  */
 fun EmotionalState.getMoodColor(): Int {
     return when (this) {
-        EmotionalState.HAPPY -> 0xFFFFD700.toInt()      // Gold
-        EmotionalState.SAD -> 0xFF87CEEB.toInt()        // Sky blue
-        EmotionalState.TIRED -> 0xFF708090.toInt()      // Slate gray
-        EmotionalState.ROMANTIC -> 0xFFFF69B4.toInt()   // Hot pink
-        EmotionalState.PLAYFUL -> 0xFF00FF00.toInt()    // Lime
-        EmotionalState.FOCUSED -> 0xFF4169E1.toInt()    // Royal blue
-        EmotionalState.RESTING -> 0xFF9370DB.toInt()    // Medium purple
-        EmotionalState.NEUTRAL -> 0xFF808080.toInt()    // Gray
+        EmotionalState.HAPPY -> 0xFFFFD700.toInt() // Gold
+        EmotionalState.SAD -> 0xFF87CEEB.toInt() // Sky blue
+        EmotionalState.TIRED -> 0xFF708090.toInt() // Slate gray
+        EmotionalState.ROMANTIC -> 0xFFFF69B4.toInt() // Hot pink
+        EmotionalState.PLAYFUL -> 0xFF00FF00.toInt() // Lime
+        EmotionalState.FOCUSED -> 0xFF4169E1.toInt() // Royal blue
+        EmotionalState.RESTING -> 0xFF9370DB.toInt() // Medium purple
+        EmotionalState.NEUTRAL -> 0xFF808080.toInt() // Gray
     }
 }
 
 fun EmotionalState.getScaleModifier(): Float {
     return when (this) {
-        EmotionalState.HAPPY -> 1.1f      // Bigger
-        EmotionalState.PLAYFUL -> 1.05f   // Slightly bigger
-        EmotionalState.ROMANTIC -> 1.0f   // Normal
-        EmotionalState.SAD -> 0.95f       // Smaller
-        EmotionalState.TIRED -> 0.9f      // Much smaller
-        else -> 1.0f                       // Normal
+        EmotionalState.HAPPY -> 1.1f // Bigger
+        EmotionalState.PLAYFUL -> 1.05f // Slightly bigger
+        EmotionalState.ROMANTIC -> 1.0f // Normal
+        EmotionalState.SAD -> 0.95f // Smaller
+        EmotionalState.TIRED -> 0.9f // Much smaller
+        else -> 1.0f // Normal
     }
 }
 

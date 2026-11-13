@@ -2,7 +2,6 @@ package com.calcvault.house
 
 import android.graphics.*
 import kotlin.math.sin
-import kotlin.math.PI
 import kotlin.math.abs
 
 /**
@@ -42,8 +41,12 @@ class BubblePopGame : BaseMiniGame(MiniGameType.BUBBLE_POP) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var spawnTimer = 0f
     private val colors = intArrayOf(
-        Color.parseColor("#FF4081"), Color.parseColor("#7C4DFF"), Color.parseColor("#00BCD4"),
-        Color.parseColor("#FFD740"), Color.parseColor("#69F0AE"), Color.parseColor("#FF6E40")
+        Color.parseColor("#FF4081"),
+        Color.parseColor("#7C4DFF"),
+        Color.parseColor("#00BCD4"),
+        Color.parseColor("#FFD740"),
+        Color.parseColor("#69F0AE"),
+        Color.parseColor("#FF6E40")
     )
 
     override fun start() { super.start(); bubbles.clear(); spawnTimer = 0f; timeLeft = 25f }
@@ -54,9 +57,15 @@ class BubblePopGame : BaseMiniGame(MiniGameType.BUBBLE_POP) {
         spawnTimer += dt
         if (spawnTimer > 0.6f && bubbles.size < 12) {
             spawnTimer = 0f
-            bubbles.add(Bubble(random.nextFloat() * 0.8f + 0.1f, 1.1f,
-                20f + random.nextFloat() * 25f, 0.4f + random.nextFloat() * 0.6f,
-                colors[random.nextInt(colors.size)]))
+            bubbles.add(
+                Bubble(
+                    random.nextFloat() * 0.8f + 0.1f,
+                    1.1f,
+                    20f + random.nextFloat() * 25f,
+                    0.4f + random.nextFloat() * 0.6f,
+                    colors[random.nextInt(colors.size)]
+                )
+            )
         }
         bubbles.forEach { it.y -= it.speed * dt; it.x += sin((it.y * 3f).toDouble()).toFloat() * dt * 0.05f }
         bubbles.removeAll { it.y < -0.1f || it.life <= 0f }

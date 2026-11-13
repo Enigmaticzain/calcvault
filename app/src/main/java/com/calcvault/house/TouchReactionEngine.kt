@@ -1,7 +1,6 @@
 package com.calcvault.house
 
 import android.graphics.PointF
-import android.view.MotionEvent
 import kotlin.math.sqrt
 import kotlin.math.abs
 
@@ -10,13 +9,13 @@ import kotlin.math.abs
  */
 
 enum class TouchGesture {
-    POKE,       // Quick single tap on character
-    PET,        // Slow stroke along head/back
-    TICKLE,     // Rapid multi-touch on belly
-    SLAP,       // Fast horizontal swipe
-    RUB_BELLY,  // Circular motion on torso
-    PICK_UP,    // Long press then drag up
-    FEED,       // Drag item to mouth area
+    POKE, // Quick single tap on character
+    PET, // Slow stroke along head/back
+    TICKLE, // Rapid multi-touch on belly
+    SLAP, // Fast horizontal swipe
+    RUB_BELLY, // Circular motion on torso
+    PICK_UP, // Long press then drag up
+    FEED, // Drag item to mouth area
     NONE
 }
 
@@ -93,11 +92,11 @@ class TouchReactionEngine(private val needsEngine: NeedsEngine?) {
         return when {
             duration < POKE_MAX_DURATION && dist < 15f -> TouchGesture.POKE
             speed > SLAP_MIN_SPEED && isHorizontalSwipe() -> TouchGesture.SLAP
-            duration > PET_MIN_DURATION && dist > PET_MIN_DISTANCE && speed < PET_MAX_SPEED
-                && (region == TouchRegion.HEAD || region == TouchRegion.EARS) -> TouchGesture.PET
+            duration > PET_MIN_DURATION && dist > PET_MIN_DISTANCE && speed < PET_MAX_SPEED &&
+                (region == TouchRegion.HEAD || region == TouchRegion.EARS) -> TouchGesture.PET
             isCircularMotion() && region == TouchRegion.BELLY -> TouchGesture.RUB_BELLY
-            touchHistory.size >= TICKLE_MIN_TOUCHES && getSpreadArea() < TICKLE_MAX_AREA
-                && region == TouchRegion.BELLY -> TouchGesture.TICKLE
+            touchHistory.size >= TICKLE_MIN_TOUCHES && getSpreadArea() < TICKLE_MAX_AREA &&
+                region == TouchRegion.BELLY -> TouchGesture.TICKLE
             else -> TouchGesture.NONE
         }
     }

@@ -28,7 +28,6 @@ import com.calcvault.utils.SessionManager
  * Upgraded live Doraemon + Shizuka scene with richer park atmosphere,
  * stronger character expressions, and cleaner motion choreography.
  */
-import com.calcvault.emotional.themes.DoraemonMessageBridge
 class DoraemonTheme(private val context: Context) {
 
     private var themeView: DoraemonView? = null
@@ -74,11 +73,10 @@ private data class Character(
 )
 
 internal data class ChatMessage(
-    val sender: String,  // "doraemon" or "shizuka"
+    val sender: String, // "doraemon" or "shizuka"
     val text: String,
     val displayUntilFrame: Long
 )
-
 
 private data class Cloud(
     var x: Float,
@@ -514,7 +512,7 @@ class DoraemonView(context: Context) : View(context) {
 
             paint.color = Color.parseColor("#2F9847")
             canvas.drawCircle(x + sway, h * 0.58f, 32f, paint)
-            
+
             if (enable3D) {
                 paint.color = Color.parseColor("#27803D")
                 canvas.drawCircle(x - 14f + sway, h * 0.61f, 20f, paint)
@@ -714,7 +712,7 @@ class DoraemonView(context: Context) : View(context) {
         // Wrap text if too long
         val maxChars = 18
         val displayText = if (text.length > maxChars) text.substring(0, maxChars) + "…" else text
-        
+
         paint.color = Color.argb(240, 255, 255, 255)
         val bubble = RectF(x - 56f, y - 28f, x + 56f, y + 12f)
         canvas.drawRoundRect(bubble, 14f, 14f, paint)
@@ -776,7 +774,6 @@ class DoraemonView(context: Context) : View(context) {
             "shizuka" -> lastShizukaMessage = msg
         }
     }
-
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()

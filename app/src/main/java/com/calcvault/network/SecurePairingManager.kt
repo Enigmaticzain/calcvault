@@ -85,8 +85,6 @@ class SecurePairingManager(
         startPairing(autoPairCode)
     }
 
-
-
     private fun connectToNextCandidate(code: String, remainingUrls: MutableList<String>, attemptId: Int) {
         val nextUrl = remainingUrls.removeFirstOrNull()
         if (nextUrl.isNullOrBlank()) {
@@ -159,7 +157,7 @@ class SecurePairingManager(
             }
             urls.add(normalizedRaw.wsUrl("/ws"))
             urls.add(normalizedRaw.wsBaseUrl)
-            
+
             // Add port + 1 for built-in Android Signaling Server
             if (raw.contains(":37112")) {
                 val directWs = raw.replace(":37112", ":37113")

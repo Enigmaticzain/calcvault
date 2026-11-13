@@ -71,7 +71,7 @@ class DoubleRatchet {
         val ctr = sendCount++
         val iv = ByteArray(GCM_IV_LEN).also { RNG.nextBytes(it) }
         val ct = gcmEncrypt(plaintext, msgKey, iv)
-        plaintext.fill(0); msgKey.fill(0)
+        msgKey.fill(0)
         return RatchetMessage(
             sendCount = ctr,
             prevChainLen = prevSendLen,

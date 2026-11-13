@@ -20,32 +20,32 @@ import org.json.JSONObject
 // ═══════════════════════════════════════════════════════════════════════════
 
 enum class HouseRoom {
-    LIVING,    // Living room with TV, sofa
-    KITCHEN,   // Kitchen with stove, counter
-    BEDROOM,   // Sleep area with bed
-    ACTIVITY,  // Game/play area
-    BATHROOM,  // Toilet, shower, bathtub
-    GARDEN     // Outdoor patio, trampoline, mini-games
+    LIVING, // Living room with TV, sofa
+    KITCHEN, // Kitchen with stove, counter
+    BEDROOM, // Sleep area with bed
+    ACTIVITY, // Game/play area
+    BATHROOM, // Toilet, shower, bathtub
+    GARDEN // Outdoor patio, trampoline, mini-games
 }
 
 enum class ZoneType {
-    SOFA,           // Seating zone
-    TV,             // Television viewing zone
-    KITCHEN,        // Cooking/food prep
-    BALCONY,        // Resting area
-    BED,            // Sleep area
-    GAME_AREA,      // Play/activity zone
-    DOOR,           // Room transition
-    FLOOR,          // General floor space
-    TOILET,         // Bathroom toilet
-    SHOWER,         // Bathroom shower
-    BATHTUB,        // Bathroom bathtub
-    SINK,           // Bathroom sink/mirror
-    GARDEN_BENCH,   // Garden seating
-    TRAMPOLINE,     // Garden trampoline
+    SOFA, // Seating zone
+    TV, // Television viewing zone
+    KITCHEN, // Cooking/food prep
+    BALCONY, // Resting area
+    BED, // Sleep area
+    GAME_AREA, // Play/activity zone
+    DOOR, // Room transition
+    FLOOR, // General floor space
+    TOILET, // Bathroom toilet
+    SHOWER, // Bathroom shower
+    BATHTUB, // Bathroom bathtub
+    SINK, // Bathroom sink/mirror
+    GARDEN_BENCH, // Garden seating
+    TRAMPOLINE, // Garden trampoline
     MINI_GAME_CONSOLE, // Garden game console
-    FLOWER_BED,     // Garden flowers
-    FRIDGE          // Kitchen fridge for food
+    FLOWER_BED, // Garden flowers
+    FRIDGE // Kitchen fridge for food
 }
 
 data class InteractionZone(
@@ -82,33 +82,33 @@ enum class EmotionalState {
 }
 
 enum class CharacterAction {
-    IDLE,           // Standing still
-    WALKING,        // Moving between zones
-    SITTING,        // On sofa/chair
-    COOKING,        // In kitchen
-    WATCHING_TV,    // At TV
-    SLEEPING,       // In bed
-    PLAYING,        // Activity area
-    TALKING,        // Conversation gesture
-    REACHING,       // Reach gesture
-    LISTENING,      // Attending gesture
-    HELPING,        // Assisting partner
-    CUDDLING,       // Close interaction
-    HOLDING_HANDS,  // Hand connection
-    HEAD_TILT,      // Listening gesture
-    EATING,         // Eating food
-    BATHING,        // Showering/bathing
-    DRINKING,       // Drinking
+    IDLE, // Standing still
+    WALKING, // Moving between zones
+    SITTING, // On sofa/chair
+    COOKING, // In kitchen
+    WATCHING_TV, // At TV
+    SLEEPING, // In bed
+    PLAYING, // Activity area
+    TALKING, // Conversation gesture
+    REACHING, // Reach gesture
+    LISTENING, // Attending gesture
+    HELPING, // Assisting partner
+    CUDDLING, // Close interaction
+    HOLDING_HANDS, // Hand connection
+    HEAD_TILT, // Listening gesture
+    EATING, // Eating food
+    BATHING, // Showering/bathing
+    DRINKING, // Drinking
     BRUSHING_TEETH, // Dental care
-    USING_TOILET,   // Bathroom
-    GARDENING,      // Tending flowers
-    TRAMPOLINING,   // Bouncing
-    DANCING,        // Dancing together
-    SICK,           // Feeling unwell
-    REFUSING,       // Won't do action (needs too low)
-    FLINCHING,      // Poke reaction
-    LAUGHING,       // Tickle reaction
-    PURRING         // Being petted
+    USING_TOILET, // Bathroom
+    GARDENING, // Tending flowers
+    TRAMPOLINING, // Bouncing
+    DANCING, // Dancing together
+    SICK, // Feeling unwell
+    REFUSING, // Won't do action (needs too low)
+    FLINCHING, // Poke reaction
+    LAUGHING, // Tickle reaction
+    PURRING // Being petted
 }
 
 enum class TalkingPetMode {

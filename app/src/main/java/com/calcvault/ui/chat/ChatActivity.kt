@@ -151,7 +151,7 @@ class ChatActivity : AppCompatActivity() {
         setupMessageListener()
         loadMessages()
         runInstagramImportIfAvailable()
-        
+
         // Initialize triggers
         animEngine.initializeBuiltInTriggers()
         loadCustomTriggers()
@@ -169,18 +169,17 @@ class ChatActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
-        
+
         // Modern approach to handle keyboard (IME) resizing without panning the window
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root) { view, windowInsets ->
             val insets = windowInsets.getInsets(
-                androidx.core.view.WindowInsetsCompat.Type.systemBars() or 
-                androidx.core.view.WindowInsetsCompat.Type.ime()
+                androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.ime()
             )
             // Apply padding to the bottom so the layout shrinks when keyboard opens
             view.setPadding(0, 0, 0, insets.bottom)
             androidx.core.view.WindowInsetsCompat.CONSUMED
         }
-        
+
         rootLayout = root
         setContentView(root)
 
@@ -189,7 +188,7 @@ class ChatActivity : AppCompatActivity() {
         // Add ambient background if no theme is active
         if (ThemeApplicator.activeTheme == ThemeApplicator.ThemeChoice.NONE) {
             root.setBackgroundColor(theme.backgroundStart)
-            
+
             val sanctuaryThemeId = when (theme.type) {
                 com.calcvault.emotional.ThemeEngine.ThemeType.SANCTUARY_STARGAZING -> "stargazing"
                 com.calcvault.emotional.ThemeEngine.ThemeType.SANCTUARY_RAINYCAFE -> "rainy-cafe"
@@ -214,7 +213,7 @@ class ChatActivity : AppCompatActivity() {
                     settings.allowFileAccess = true
                     settings.allowFileAccessFromFileURLs = true
                     settings.allowUniversalAccessFromFileURLs = true
-                    
+
                     // Disable zooming and scaling
                     settings.setSupportZoom(false)
                     settings.builtInZoomControls = false
@@ -222,7 +221,7 @@ class ChatActivity : AppCompatActivity() {
                     settings.useWideViewPort = true
                     settings.loadWithOverviewMode = true
                     overScrollMode = View.OVER_SCROLL_NEVER
-                    
+
                     webViewClient = android.webkit.WebViewClient()
                     webChromeClient = android.webkit.WebChromeClient()
                     loadUrl("file:///android_asset/sanctuary/index.html?theme=$sanctuaryThemeId&embed=true")
@@ -255,7 +254,7 @@ class ChatActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             background = glassBackground(92, 10, 10, 15, dpToPx(0))
-            
+
             // Hide the native chat UI if the interactive React Sanctuary theme is active
             val sanctuaryThemeId = when (theme.type) {
                 com.calcvault.emotional.ThemeEngine.ThemeType.SANCTUARY_STARGAZING -> "stargazing"
@@ -563,7 +562,7 @@ class ChatActivity : AppCompatActivity() {
         val root = rootLayout ?: return
         val keyboardTag = "glassKeyboard"
         val existing = root.findViewWithTag<View>(keyboardTag)
-        
+
         if (existing != null) {
             root.removeView(existing)
             isGlassKeyboardVisible = false
@@ -619,7 +618,7 @@ class ChatActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(50))
         }
-        
+
         val spaceBtn = Button(this).apply {
             text = "SPACE"
             layoutParams = LinearLayout.LayoutParams(0, dpToPx(44), 3f).apply { setMargins(dpToPx(2), dpToPx(2), dpToPx(2), dpToPx(2)) }
@@ -627,7 +626,7 @@ class ChatActivity : AppCompatActivity() {
             setTextColor(Color.WHITE)
             setOnClickListener { messageInput.append(" ") }
         }
-        
+
         val delBtn = Button(this).apply {
             text = "DEL"
             layoutParams = LinearLayout.LayoutParams(0, dpToPx(44), 1f).apply { setMargins(dpToPx(2), dpToPx(2), dpToPx(2), dpToPx(2)) }
@@ -641,7 +640,7 @@ class ChatActivity : AppCompatActivity() {
                 }
             }
         }
-        
+
         bottomRow.addView(spaceBtn)
         bottomRow.addView(delBtn)
         keyboard.addView(bottomRow)
@@ -830,7 +829,7 @@ class ChatActivity : AppCompatActivity() {
             REQUEST_CODE_VOICE_RECORD -> if (resultCode == Activity.RESULT_OK) {
                 val voiceFilePath = data?.getStringExtra("voice_file_path")
                 val voiceDuration = data?.getStringExtra("voice_duration") ?: "0:00"
-                
+
                 if (!voiceFilePath.isNullOrEmpty()) {
                     val voiceUri = Uri.parse("file://$voiceFilePath")
                     sendVoiceMessage(voiceUri, voiceDuration)
@@ -902,13 +901,13 @@ class ChatActivity : AppCompatActivity() {
             )
 
             messageDB.saveMessage(message)
-            
+
             // Read voice file and send encrypted
             try {
                 val inputStream = contentResolver.openInputStream(voiceUri)
                 val voiceData = inputStream?.readBytes() ?: byteArrayOf()
                 inputStream?.close()
-                
+
                 networkEngine.sendEncryptedPayload(
                     id = message.id,
                     data = voiceData,
@@ -929,7 +928,7 @@ class ChatActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         ThemeApplicator.applyActive(this)
-        
+
         val wallpaperPath = SessionManager.chatWallpaperPath
         if (wallpaperPath.isNotBlank()) {
             try {
@@ -941,7 +940,7 @@ class ChatActivity : AppCompatActivity() {
                 }
                 val drawable = android.graphics.drawable.BitmapDrawable(resources, bitmap)
                 drawable.colorFilter = android.graphics.PorterDuffColorFilter(Color.parseColor("#88000000"), android.graphics.PorterDuff.Mode.SRC_OVER)
-                
+
                 rootLayout?.background = drawable
                 // Ensure chat layout is transparent to see wallpaper
                 rootLayout?.findViewWithTag<View>("chatLayout")?.background = glassBackground(120, 10, 10, 15, 0)
@@ -1116,9 +1115,9 @@ class ChatActivity : AppCompatActivity() {
                 else -> "*/*"
             }
         }
-        
+
         val vaultRef = refStr.toLongOrNull()?.let { mediaManager.getMediaRef(it) }
-        
+
         return MediaPreview(
             ref = refStr,
             openableUri = refStr.takeIf { it.isOpenableAndroidUri() }?.let(Uri::parse),
@@ -1148,7 +1147,7 @@ class ChatActivity : AppCompatActivity() {
         }
 
         container.visibility = View.VISIBLE
-        
+
         // Handle thumbnails for vault media
         if (preview.isVaultMedia && preview.vaultRef != null) {
             val imageView = ImageView(this).apply {
@@ -1157,7 +1156,7 @@ class ChatActivity : AppCompatActivity() {
                 setBackgroundColor(Color.argb(80, 0, 0, 0))
             }
             container.addView(imageView)
-            
+
             lifecycleScope.launch(Dispatchers.IO) {
                 val bitmap = mediaManager.decodeThumbnail(preview.vaultRef.thumbHash)
                 withContext(Dispatchers.Main) {
@@ -1183,7 +1182,9 @@ class ChatActivity : AppCompatActivity() {
                         if (event.action == MotionEvent.ACTION_DOWN) {
                             showSnapFullScreen(message, preview.openableUri)
                             true
-                        } else false
+                        } else {
+                            false
+                        }
                     }
                 }
                 container.addView(btn)
@@ -1315,7 +1316,7 @@ class ChatActivity : AppCompatActivity() {
                 MediaStore.Images.Media.getBitmap(contentResolver, uri)
             }
             imageView.setImageBitmap(bitmap)
-        } catch(e: Exception) {
+        } catch (e: Exception) {
             Toast.makeText(this, "Failed to load snap", Toast.LENGTH_SHORT).show()
             return
         }
@@ -1331,7 +1332,7 @@ class ChatActivity : AppCompatActivity() {
                 dialog.dismiss()
             }
         }.start()
-        
+
         dialog.setOnDismissListener {
             timer?.cancel()
             kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {

@@ -15,7 +15,7 @@ object PermanentPairManager {
 
     private const val PREFS_NAME = "permanent_pair"
     private const val KEY_IS_PAIRED = "is_paired"
-    private const val KEY_MY_ROLE = "my_role"   // "zain" or "sanu"
+    private const val KEY_MY_ROLE = "my_role" // "zain" or "sanu"
     private const val KEY_PAIR_TIMESTAMP = "pair_timestamp"
     private const val KEY_PARTNER_DEVICE_ID = "partner_device_id"
     private const val KEY_LOCAL_VERSION_CODE = "local_version_code"

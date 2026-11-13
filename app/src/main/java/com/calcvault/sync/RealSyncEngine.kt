@@ -298,7 +298,8 @@ class RealSyncEngine {
 
             val meta = readIndexEntry(if (item.direction == Direction.LOCAL_TO_REMOTE) localRoot else remoteRoot, item.recordId) ?: continue
             val ok = transferRecord(
-                meta, if (item.direction == Direction.LOCAL_TO_REMOTE) localRoot else remoteRoot,
+                meta,
+                if (item.direction == Direction.LOCAL_TO_REMOTE) localRoot else remoteRoot,
                 if (item.direction == Direction.LOCAL_TO_REMOTE) remoteRoot else localRoot,
                 item.direction,
                 localContainer

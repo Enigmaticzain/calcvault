@@ -1,7 +1,6 @@
 package com.calcvault.network.webrtc
 
 import android.content.Context
-import android.util.Log
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import org.webrtc.*
@@ -23,10 +22,10 @@ class WebRTCManager(
     private val TAG = "WebRTCManager"
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val rootEglBase: EglBase by lazy { EglBase.create() }
-    
+
     private lateinit var peerConnectionFactory: PeerConnectionFactory
     private var peerConnection: PeerConnection? = null
-    
+
     private var localAudioTrack: AudioTrack? = null
     private var localVideoTrack: VideoTrack? = null
 
@@ -68,39 +67,42 @@ class WebRTCManager(
         val rtcConfig = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
         }
-        peerConnection = peerConnectionFactory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
-            override fun onIceCandidate(candidate: IceCandidate?) {
-                candidate?.let {
-                    onIceCandidateGenerated?.invoke(it)
-                    sendIceCandidate(it.sdpMid, it.sdpMLineIndex, it.sdp)
+        peerConnection = peerConnectionFactory.createPeerConnection(
+            rtcConfig,
+            object : PeerConnection.Observer {
+                override fun onIceCandidate(candidate: IceCandidate?) {
+                    candidate?.let {
+                        onIceCandidateGenerated?.invoke(it)
+                        sendIceCandidate(it.sdpMid, it.sdpMLineIndex, it.sdp)
+                    }
                 }
-            }
-            override fun onTrack(transceiver: RtpTransceiver?) {
-                val track = transceiver?.receiver?.track() ?: return
-                if (track is VideoTrack) {
-                    onRemoteVideoTrack?.invoke(track)
+                override fun onTrack(transceiver: RtpTransceiver?) {
+                    val track = transceiver?.receiver?.track() ?: return
+                    if (track is VideoTrack) {
+                        onRemoteVideoTrack?.invoke(track)
+                    }
                 }
-            }
-            override fun onConnectionChange(newState: PeerConnection.PeerConnectionState?) {
-                state = when(newState) {
-                    PeerConnection.PeerConnectionState.CONNECTED -> State.CONNECTED
-                    PeerConnection.PeerConnectionState.DISCONNECTED -> State.DISCONNECTED
-                    PeerConnection.PeerConnectionState.FAILED -> State.FAILED
-                    else -> state
+                override fun onConnectionChange(newState: PeerConnection.PeerConnectionState?) {
+                    state = when (newState) {
+                        PeerConnection.PeerConnectionState.CONNECTED -> State.CONNECTED
+                        PeerConnection.PeerConnectionState.DISCONNECTED -> State.DISCONNECTED
+                        PeerConnection.PeerConnectionState.FAILED -> State.FAILED
+                        else -> state
+                    }
+                    onConnectionStateChange?.invoke(newState?.name ?: "UNKNOWN")
                 }
-                onConnectionStateChange?.invoke(newState?.name ?: "UNKNOWN")
+                override fun onSignalingChange(p0: PeerConnection.SignalingState?) {}
+                override fun onIceConnectionChange(p0: PeerConnection.IceConnectionState?) {}
+                override fun onIceConnectionReceivingChange(p0: Boolean) {}
+                override fun onIceGatheringChange(p0: PeerConnection.IceGatheringState?) {}
+                override fun onIceCandidatesRemoved(p0: Array<out IceCandidate>?) {}
+                override fun onAddStream(p0: MediaStream?) {}
+                override fun onRemoveStream(p0: MediaStream?) {}
+                override fun onDataChannel(p0: DataChannel?) {}
+                override fun onRenegotiationNeeded() {}
+                override fun onAddTrack(p0: RtpReceiver?, p1: Array<out MediaStream>?) {}
             }
-            override fun onSignalingChange(p0: PeerConnection.SignalingState?) {}
-            override fun onIceConnectionChange(p0: PeerConnection.IceConnectionState?) {}
-            override fun onIceConnectionReceivingChange(p0: Boolean) {}
-            override fun onIceGatheringChange(p0: PeerConnection.IceGatheringState?) {}
-            override fun onIceCandidatesRemoved(p0: Array<out IceCandidate>?) {}
-            override fun onAddStream(p0: MediaStream?) {}
-            override fun onRemoveStream(p0: MediaStream?) {}
-            override fun onDataChannel(p0: DataChannel?) {}
-            override fun onRenegotiationNeeded() {}
-            override fun onAddTrack(p0: RtpReceiver?, p1: Array<out MediaStream>?) {}
-        })
+        )
     }
 
     suspend fun createOffer(withVideo: Boolean = false): Boolean = suspendCancellableCoroutine { cont ->
@@ -109,24 +111,30 @@ class WebRTCManager(
         if (withVideo) addLocalVideoTrack()
 
         val constraints = MediaConstraints()
-        peerConnection?.createOffer(object : SdpObserver {
-            override fun onCreateSuccess(sdp: SessionDescription) {
-                peerConnection?.setLocalDescription(object : SdpObserver {
-                    override fun onCreateSuccess(p0: SessionDescription?) {}
-                    override fun onSetSuccess() {
-                        scope.launch {
-                            val ok = sendToSignaling("offer", sdp.description)
-                            cont.resume(ok)
-                        }
-                    }
-                    override fun onCreateFailure(p0: String?) { cont.resume(false) }
-                    override fun onSetFailure(p0: String?) { cont.resume(false) }
-                }, sdp)
-            }
-            override fun onSetSuccess() {}
-            override fun onCreateFailure(p0: String?) { cont.resume(false) }
-            override fun onSetFailure(p0: String?) { cont.resume(false) }
-        }, constraints)
+        peerConnection?.createOffer(
+            object : SdpObserver {
+                override fun onCreateSuccess(sdp: SessionDescription) {
+                    peerConnection?.setLocalDescription(
+                        object : SdpObserver {
+                            override fun onCreateSuccess(p0: SessionDescription?) {}
+                            override fun onSetSuccess() {
+                                scope.launch {
+                                    val ok = sendToSignaling("offer", sdp.description)
+                                    cont.resume(ok)
+                                }
+                            }
+                            override fun onCreateFailure(p0: String?) { cont.resume(false) }
+                            override fun onSetFailure(p0: String?) { cont.resume(false) }
+                        },
+                        sdp
+                    )
+                }
+                override fun onSetSuccess() {}
+                override fun onCreateFailure(p0: String?) { cont.resume(false) }
+                override fun onSetFailure(p0: String?) { cont.resume(false) }
+            },
+            constraints
+        )
     }
 
     suspend fun answerOffer(offerSdp: String): Boolean = suspendCancellableCoroutine { cont ->
@@ -134,31 +142,40 @@ class WebRTCManager(
         addLocalAudioTrack()
 
         val remoteSdp = SessionDescription(SessionDescription.Type.OFFER, offerSdp)
-        peerConnection?.setRemoteDescription(object : SdpObserver {
-            override fun onSetSuccess() {
-                peerConnection?.createAnswer(object : SdpObserver {
-                    override fun onCreateSuccess(sdp: SessionDescription) {
-                        peerConnection?.setLocalDescription(object : SdpObserver {
-                            override fun onSetSuccess() {
-                                scope.launch {
-                                    val ok = sendToSignaling("answer", sdp.description)
-                                    cont.resume(ok)
-                                }
+        peerConnection?.setRemoteDescription(
+            object : SdpObserver {
+                override fun onSetSuccess() {
+                    peerConnection?.createAnswer(
+                        object : SdpObserver {
+                            override fun onCreateSuccess(sdp: SessionDescription) {
+                                peerConnection?.setLocalDescription(
+                                    object : SdpObserver {
+                                        override fun onSetSuccess() {
+                                            scope.launch {
+                                                val ok = sendToSignaling("answer", sdp.description)
+                                                cont.resume(ok)
+                                            }
+                                        }
+                                        override fun onCreateFailure(p0: String?) { cont.resume(false) }
+                                        override fun onSetFailure(p0: String?) { cont.resume(false) }
+                                        override fun onCreateSuccess(p0: SessionDescription?) {}
+                                    },
+                                    sdp
+                                )
                             }
+                            override fun onSetSuccess() {}
                             override fun onCreateFailure(p0: String?) { cont.resume(false) }
                             override fun onSetFailure(p0: String?) { cont.resume(false) }
-                            override fun onCreateSuccess(p0: SessionDescription?) {}
-                        }, sdp)
-                    }
-                    override fun onSetSuccess() {}
-                    override fun onCreateFailure(p0: String?) { cont.resume(false) }
-                    override fun onSetFailure(p0: String?) { cont.resume(false) }
-                }, MediaConstraints())
-            }
-            override fun onSetFailure(p0: String?) { cont.resume(false) }
-            override fun onCreateSuccess(p0: SessionDescription?) {}
-            override fun onCreateFailure(p0: String?) { cont.resume(false) }
-        }, remoteSdp)
+                        },
+                        MediaConstraints()
+                    )
+                }
+                override fun onSetFailure(p0: String?) { cont.resume(false) }
+                override fun onCreateSuccess(p0: SessionDescription?) {}
+                override fun onCreateFailure(p0: String?) { cont.resume(false) }
+            },
+            remoteSdp
+        )
     }
 
     fun addRemoteIceCandidate(sdpMid: String, sdpMLineIndex: Int, candidateSdp: String) {

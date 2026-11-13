@@ -56,7 +56,7 @@ class VoiceRecorderActivity : AppCompatActivity() {
     private val PERMISSION_CODE_AUDIO = 101
     private val MAX_RECORDING_DURATION = 300000L // 5 minutes in milliseconds
     private var recordingStartTime = 0L
-    
+
     // Slide to cancel gesture tracking
     private var recordButtonStartX = 0f
     private var isSlideToCancelActive = false
@@ -108,7 +108,7 @@ class VoiceRecorderActivity : AppCompatActivity() {
                 MotionEvent.ACTION_MOVE -> {
                     if (isRecording) {
                         val deltaX = event.x - recordButtonStartX
-                        
+
                         // Slide left to cancel (WhatsApp style)
                         if (deltaX < SLIDE_CANCEL_THRESHOLD) {
                             if (!isSlideToCancelActive) {
@@ -127,7 +127,7 @@ class VoiceRecorderActivity : AppCompatActivity() {
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (isRecording) {
                         val deltaX = event.x - recordButtonStartX
-                        
+
                         // If swiped far enough left, cancel recording
                         if (deltaX < SLIDE_CANCEL_THRESHOLD - 50) {
                             cancelRecording()
@@ -176,12 +176,14 @@ class VoiceRecorderActivity : AppCompatActivity() {
             // Create output file
             recordingFile = createRecordingFile()
 
-            mediaRecorder = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                MediaRecorder(this)
-            } else {
-                @Suppress("DEPRECATION")
-                MediaRecorder()
-            }).apply {
+            mediaRecorder = (
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    MediaRecorder(this)
+                } else {
+                    @Suppress("DEPRECATION")
+                    MediaRecorder()
+                }
+                ).apply {
                 setAudioSource(MediaRecorder.AudioSource.MIC)
                 setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                 setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
@@ -299,15 +301,15 @@ class VoiceRecorderActivity : AppCompatActivity() {
             isPaused = false
             waveformView.stopAnimation()
             recordingTimer?.cancel()
-            
+
             // Delete the file without sending
             recordingFile?.delete()
             recordingFile = null
-            
+
             updateUIState(UIState.READY)
             timerText.text = "0:00"
             statusText.text = "🎤 Press & Hold to Record"
-            
+
             Toast.makeText(this, "Recording cancelled", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(this, "Error cancelling: ${e.message}", Toast.LENGTH_SHORT).show()

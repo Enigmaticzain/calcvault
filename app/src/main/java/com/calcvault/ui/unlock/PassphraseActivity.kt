@@ -27,8 +27,6 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
-
-import android.app.ProgressDialog
 class PassphraseActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityPassphraseBinding
@@ -101,7 +99,7 @@ class PassphraseActivity : AppCompatActivity() {
         binding.btnUnlock.isEnabled = false
         binding.etPassphrase.isEnabled = false
         binding.btnBiometric.isEnabled = false
-        
+
         // Show lightweight loading indicator (avoids ProgressDialog overhead)
         binding.tvStatus.text = "Verifying passphrase..."
 

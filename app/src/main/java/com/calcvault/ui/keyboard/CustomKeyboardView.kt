@@ -25,40 +25,40 @@ class CustomKeyboardView @JvmOverloads constructor(
     init {
         columnCount = 3
         rowCount = 4
-        
+
         // Generate keyboard theme from current app theme
         val appTheme = themeEngine.getCurrentTheme()
         keyboardTheme = KeyboardThemeGenerator.fromAppTheme(appTheme, KeyboardMode.EXPRESSIVE)
-        
+
         // Apply keyboard background theme
         setBackgroundColor(keyboardTheme.backgroundColor)
-        
+
         setupKeyboard()
     }
 
     private fun setupKeyboard() {
         // Clear any existing views
         removeAllViews()
-        
+
         // Row 1: 1, 2, 3
         addKeyButton("1")
         addKeyButton("2")
         addKeyButton("3")
-        
+
         // Row 2: 4, 5, 6
         addKeyButton("4")
         addKeyButton("5")
         addKeyButton("6")
-        
+
         // Row 3: 7, 8, 9
         addKeyButton("7")
         addKeyButton("8")
         addKeyButton("9")
-        
+
         // Row 4: 0, ⌫ (backspace), ⏎ (enter)
         addKeyButton("0")
-        addKeyButton("⌫", isSpecial = true)  // Backspace
-        addKeyButton("⏎", isSpecial = true)  // Enter
+        addKeyButton("⌫", isSpecial = true) // Backspace
+        addKeyButton("⏎", isSpecial = true) // Enter
     }
 
     private fun addKeyButton(text: String, isSpecial: Boolean = false) {
@@ -74,7 +74,7 @@ class CustomKeyboardView @JvmOverloads constructor(
             lp.topMargin = 8
             lp.bottomMargin = 8
             layoutParams = lp
-            
+
             // Apply theme colors
             if (isSpecial) {
                 setBackgroundColor(keyboardTheme.accentColor)
@@ -83,18 +83,18 @@ class CustomKeyboardView @JvmOverloads constructor(
                 setBackgroundColor(keyboardTheme.keyColor)
                 setTextColor(keyboardTheme.keyTextColor)
             }
-            
+
             // Apply styling
             isAllCaps = false
             textSize = 18f
             elevation = keyboardTheme.keyElevation
-            
+
             setOnClickListener {
                 onKeyPress?.invoke(text)
                 handleKeyPress(this)
             }
         }
-        
+
         addView(button)
     }
 
@@ -102,7 +102,7 @@ class CustomKeyboardView @JvmOverloads constructor(
         // Animate key press
         button.scaleX = keyboardTheme.keyPressScale
         button.scaleY = keyboardTheme.keyPressScale
-        
+
         button.postDelayed({
             button.scaleX = 1f
             button.scaleY = 1f
@@ -118,15 +118,15 @@ class CustomKeyboardView @JvmOverloads constructor(
         val appTheme = themeEngine.getCurrentTheme()
         val newTheme = KeyboardThemeGenerator.fromAppTheme(appTheme, KeyboardMode.EXPRESSIVE)
         keyboardTheme = newTheme
-        
+
         // Update background
         setBackgroundColor(newTheme.backgroundColor)
-        
+
         // Update all child buttons with new theme
         for (i in 0 until childCount) {
             val button = getChildAt(i) as? AppCompatButton ?: continue
             val isSpecial = button.text in listOf("⌫", "⏎")
-            
+
             if (isSpecial) {
                 button.setBackgroundColor(newTheme.accentColor)
                 button.setTextColor(newTheme.accentText)

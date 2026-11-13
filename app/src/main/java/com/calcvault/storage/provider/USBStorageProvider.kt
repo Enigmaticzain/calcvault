@@ -151,7 +151,8 @@ class USBStorageProvider(
             val location = container?.getRecordLocation(id)
             id to IndexEntry(
                 id = id,
-                offset = location?.first ?: 0L, len = location?.second ?: 0,
+                offset = location?.first ?: 0L,
+                len = location?.second ?: 0,
                 type = keyToSegmentType(key),
                 hash = CryptoUtils.sha256hex(key.toByteArray()),
                 key = key

@@ -4,7 +4,6 @@ import android.app.Activity
 import android.graphics.Color
 import android.graphics.PointF
 import android.view.ViewGroup
-import android.widget.FrameLayout
 import org.json.JSONObject
 import com.calcvault.storage.provider.StorageManager
 
@@ -138,7 +137,7 @@ object DualCompanionHouseApplicator {
 
         houseView?.setCharacterState(currentState)
         env.setCurrentRoom(config.currentRoom)
-        
+
         // Apply initial room background
         env.getRoomLayout(config.currentRoom)?.let { layout ->
             houseView?.switchToRoom(config.currentRoom, layout.backgroundColor)
@@ -238,7 +237,7 @@ object DualCompanionHouseApplicator {
         )
 
         view.setCharacterState(currentState)
-        
+
         // Update background color in 3D scene
         env.getRoomLayout(room)?.let { layout ->
             view.switchToRoom(room, layout.backgroundColor)
@@ -272,7 +271,6 @@ object DualCompanionHouseApplicator {
         houseView?.setDebugMode(enabled)
         onSettingChanged?.invoke("debugMode", enabled)
     }
-
 
     fun setCharacterMood(character: CharacterIdentity, mood: EmotionalState) {
         if (!isActive) return
@@ -377,9 +375,11 @@ object DualCompanionHouseApplicator {
             val action = CharacterAction.EATING
             when (character) {
                 CharacterIdentity.ZAIN -> currentState = currentState.copy(
-                    zain = currentState.zain.copy(action = action, emotionalState = EmotionalState.HAPPY, animationProgress = 0f))
+                    zain = currentState.zain.copy(action = action, emotionalState = EmotionalState.HAPPY, animationProgress = 0f)
+                )
                 CharacterIdentity.SANU -> currentState = currentState.copy(
-                    sanu = currentState.sanu.copy(action = action, emotionalState = EmotionalState.HAPPY, animationProgress = 0f))
+                    sanu = currentState.sanu.copy(action = action, emotionalState = EmotionalState.HAPPY, animationProgress = 0f)
+                )
             }
             houseView?.setCharacterState(currentState)
             particleEngine?.emit(ParticleType.STAR, getCharPos(character).x, getCharPos(character).y - 60f, 5)
@@ -393,9 +393,11 @@ object DualCompanionHouseApplicator {
         needsEngine?.bathe(character)
         when (character) {
             CharacterIdentity.ZAIN -> currentState = currentState.copy(
-                zain = currentState.zain.copy(action = CharacterAction.BATHING, animationProgress = 0f))
+                zain = currentState.zain.copy(action = CharacterAction.BATHING, animationProgress = 0f)
+            )
             CharacterIdentity.SANU -> currentState = currentState.copy(
-                sanu = currentState.sanu.copy(action = CharacterAction.BATHING, animationProgress = 0f))
+                sanu = currentState.sanu.copy(action = CharacterAction.BATHING, animationProgress = 0f)
+            )
         }
         houseView?.setCharacterState(currentState)
         particleEngine?.emit(ParticleType.BUBBLE, getCharPos(character).x, getCharPos(character).y - 40f, 8)
@@ -407,9 +409,11 @@ object DualCompanionHouseApplicator {
         changeRoom(HouseRoom.BEDROOM)
         when (character) {
             CharacterIdentity.ZAIN -> currentState = currentState.copy(
-                zain = currentState.zain.copy(action = CharacterAction.SLEEPING, emotionalState = EmotionalState.TIRED))
+                zain = currentState.zain.copy(action = CharacterAction.SLEEPING, emotionalState = EmotionalState.TIRED)
+            )
             CharacterIdentity.SANU -> currentState = currentState.copy(
-                sanu = currentState.sanu.copy(action = CharacterAction.SLEEPING, emotionalState = EmotionalState.TIRED))
+                sanu = currentState.sanu.copy(action = CharacterAction.SLEEPING, emotionalState = EmotionalState.TIRED)
+            )
         }
         houseView?.setCharacterState(currentState)
         particleEngine?.emit(ParticleType.SLEEP_Z, getCharPos(character).x, getCharPos(character).y - 60f, 3)

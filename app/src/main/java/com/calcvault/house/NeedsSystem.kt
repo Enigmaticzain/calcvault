@@ -16,22 +16,22 @@ import com.calcvault.storage.provider.StorageManager
 // ═══════════════════════════════════════════════════════════════════════════
 
 enum class NeedType {
-    HUNGER,   // Fed by food items
-    ENERGY,   // Restored by sleeping
-    HYGIENE,  // Restored by bathing/showering
+    HUNGER, // Fed by food items
+    ENERGY, // Restored by sleeping
+    HYGIENE, // Restored by bathing/showering
     HAPPINESS // Restored by playing, petting, mini-games
 }
 
 enum class NeedUrgency {
-    SATISFIED,  // 60-100
-    MODERATE,   // 25-59
-    LOW,        // 10-24
-    CRITICAL    // 0-9
+    SATISFIED, // 60-100
+    MODERATE, // 25-59
+    LOW, // 10-24
+    CRITICAL // 0-9
 }
 
 data class NeedState(
     val type: NeedType,
-    val value: Float = 80f,        // 0-100
+    val value: Float = 80f, // 0-100
     val decayRatePerMin: Float = 1f, // Points lost per minute
     val lastUpdateTime: Long = System.currentTimeMillis()
 ) {
@@ -247,9 +247,11 @@ class NeedsEngine {
 
     fun bathe(character: CharacterIdentity) {
         val needs = getNeeds(character)
-        setNeeds(character, needs
-            .withUpdatedNeed(NeedType.HYGIENE, needs.hygiene.value + BATH_RESTORE_AMOUNT)
-            .withUpdatedNeed(NeedType.HAPPINESS, needs.happiness.value + 5f)
+        setNeeds(
+            character,
+            needs
+                .withUpdatedNeed(NeedType.HYGIENE, needs.hygiene.value + BATH_RESTORE_AMOUNT)
+                .withUpdatedNeed(NeedType.HAPPINESS, needs.happiness.value + 5f)
         )
     }
 

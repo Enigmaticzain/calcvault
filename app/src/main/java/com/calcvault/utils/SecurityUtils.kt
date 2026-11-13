@@ -34,7 +34,7 @@ object SecurityUtils {
                 // 4. Clear app cache and files
                 context.cacheDir.deleteRecursively()
                 context.filesDir.deleteRecursively()
-                
+
                 // 5. Exit app
                 Process.killProcess(Process.myPid())
             } catch (e: Exception) {

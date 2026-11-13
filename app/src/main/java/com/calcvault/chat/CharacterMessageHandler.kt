@@ -90,7 +90,7 @@ class CharacterMessageHandler(
     ) {
         // Disable staggered delay to prevent screen "moving"/lags on scroll
         // val staggerDelay = position * successiveAnimationDelayMs
-        
+
         // Use a fixed small delay if it's one of the first few items, otherwise none
         val staggerDelay = if (position < 10) position * 30L else 0L
 

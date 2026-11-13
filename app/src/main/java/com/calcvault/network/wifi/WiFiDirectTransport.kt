@@ -118,7 +118,8 @@ class WiFiDirectTransport(private val context: Context) {
         }
 
         manager.connect(
-            channel, config,
+            channel,
+            config,
             object : WifiP2pManager.ActionListener {
                 override fun onSuccess() {
                     // Connection initiated — wait for WIFI_P2P_CONNECTION_CHANGED_ACTION

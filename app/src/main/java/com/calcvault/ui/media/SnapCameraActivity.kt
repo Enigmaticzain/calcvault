@@ -6,11 +6,9 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
 import android.view.TextureView
-import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
-import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -50,7 +48,7 @@ class SnapCameraActivity : AppCompatActivity() {
     private lateinit var overlayTexture: TextureView
     private lateinit var cameraExecutor: ExecutorService
     private lateinit var filterEngine: VideoFilterEngine
-    
+
     private var imageCapture: ImageCapture? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var isFlashOn = false
@@ -64,7 +62,7 @@ class SnapCameraActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         window.setFlags(
             WindowManager.LayoutParams.FLAG_SECURE,
             WindowManager.LayoutParams.FLAG_SECURE
@@ -73,7 +71,7 @@ class SnapCameraActivity : AppCompatActivity() {
 
         // Build UI
         buildUI()
-        
+
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         // Initialize filter engine with TextureView overlay
@@ -136,15 +134,15 @@ class SnapCameraActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
-            
+
             onEmojiTrigger = { emoji ->
                 filterEngine.triggerEmojiShower(emoji, 1.5f)
             }
-            
+
             onFilterSelected = { filterType, intensity ->
                 filterEngine.applyOverlayFilter(filterType, 0, intensity)
             }
-            
+
             onClearEffects = {
                 filterEngine.clearAllEffects()
             }
@@ -254,12 +252,15 @@ class SnapCameraActivity : AppCompatActivity() {
 
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
                     Toast.makeText(this@SnapCameraActivity, "✓ Snap saved!", Toast.LENGTH_SHORT).show()
-                    
+
                     activityScope.launch {
                         Thread.sleep(500)
-                        setResult(RESULT_OK, Intent().apply {
-                            putExtra("snap_uri", output.savedUri.toString())
-                        })
+                        setResult(
+                            RESULT_OK,
+                            Intent().apply {
+                                putExtra("snap_uri", output.savedUri.toString())
+                            }
+                        )
                         finish()
                     }
                 }

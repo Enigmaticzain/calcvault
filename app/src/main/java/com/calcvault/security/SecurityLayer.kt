@@ -109,7 +109,7 @@ class SecurityLayer(private val context: Context) {
             // Read /proc/net/tcp directly instead of spawning netstat subprocess (50x faster)
             val tcpFile = File("/proc/net/tcp")
             if (!tcpFile.exists()) return false
-            
+
             tcpFile.readLines().any { line ->
                 // Format: local_address remote_address state ...
                 // Port is hex in the file, e.g., port 27042 = 0x69BA

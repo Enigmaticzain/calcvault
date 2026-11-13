@@ -74,7 +74,7 @@ object ApkUpdateManager {
         try {
             val apkPath = activity.applicationInfo.sourceDir
             val apkFile = File(apkPath)
-            
+
             // Copy to cache so we can share it
             val cacheDir = File(activity.cacheDir, "updates")
             cacheDir.mkdirs()

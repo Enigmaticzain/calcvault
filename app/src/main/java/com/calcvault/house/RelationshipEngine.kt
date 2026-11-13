@@ -16,7 +16,7 @@ enum class RelationshipStage(val minLove: Int, val label: String, val emoji: Str
 }
 
 data class RelationshipState(
-    val loveMeter: Float = 30f,  // 0-100
+    val loveMeter: Float = 30f, // 0-100
     val totalInteractions: Int = 0,
     val giftCount: Int = 0,
     val fightCount: Int = 0,
@@ -37,8 +37,11 @@ data class RelationshipState(
 
     companion object {
         fun fromJSON(j: JSONObject) = RelationshipState(
-            j.optDouble("love", 30.0).toFloat(), j.optInt("interactions"), j.optInt("gifts"),
-            j.optInt("fights"), j.optLong("lastTime", System.currentTimeMillis())
+            j.optDouble("love", 30.0).toFloat(),
+            j.optInt("interactions"),
+            j.optInt("gifts"),
+            j.optInt("fights"),
+            j.optLong("lastTime", System.currentTimeMillis())
         )
     }
 }
@@ -50,6 +53,7 @@ class RelationshipEngine {
 
     companion object {
         private const val KEY = "prefs/house_relationship"
+
         // Love changes
         const val ACTIVITY_TOGETHER = 3f
         const val COOK_TOGETHER = 4f
@@ -61,7 +65,7 @@ class RelationshipEngine {
         const val CHAT_ROMANTIC = 6f
         const val CHAT_LOVING = 4f
         const val FIGHT_PENALTY = -8f
-        const val IGNORE_PENALTY = -1.5f  // Per hour of no interaction
+        const val IGNORE_PENALTY = -1.5f // Per hour of no interaction
         const val CUDDLE_BONUS = 6f
         const val HOLD_HANDS = 2f
     }
@@ -121,8 +125,7 @@ class RelationshipEngine {
     fun onStageChange(listener: (RelationshipState, RelationshipState) -> Unit) { listeners.add(listener) }
 
     fun saveState() {
-        try { StorageManager.write(KEY, state.toJSON().toString().toByteArray()) }
-        catch (e: Exception) { e.printStackTrace() }
+        try { StorageManager.write(KEY, state.toJSON().toString().toByteArray()) } catch (e: Exception) { e.printStackTrace() }
     }
 
     private fun loadState() {

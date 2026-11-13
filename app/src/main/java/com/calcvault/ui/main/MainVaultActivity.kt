@@ -56,7 +56,7 @@ class MainVaultActivity : AppCompatActivity() {
         themeEngine = ThemeEngine(this)
         messageDB = AppendOnlyMessageDB(USBStorageEngine.getInstance(this))
         networkEngine = NetworkMessageEngine(this, messageDB, USBStorageEngine.getInstance(this))
-        
+
         refreshUI()
     }
 
@@ -65,7 +65,7 @@ class MainVaultActivity : AppCompatActivity() {
         partnerUserId = SessionManager.partnerUserId.ifBlank {
             if (localUserId == "zain") "sanu" else "zain"
         }
-        
+
         networkEngine.initialize(
             localUserId,
             partnerUserId,

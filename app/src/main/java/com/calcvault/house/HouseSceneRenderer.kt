@@ -24,7 +24,7 @@ class HouseSceneRenderer(
     private var tomNode: ModelNode? = null
     private var angelaNode: ModelNode? = null
     private var groundNode: ModelNode? = null
-    
+
     private val scope = CoroutineScope(Dispatchers.Main)
     private val TAG = "HouseSceneRenderer"
 
@@ -37,7 +37,7 @@ class HouseSceneRenderer(
         // Calibrate Camera for Talking Tom style framing
         sceneView.cameraNode.position = Position(x = 0.0f, y = 1.4f, z = 4.0f)
         sceneView.cameraNode.rotation = Rotation(x = -5f, y = 0f, z = 0f)
-        
+
         // Add basic environment lighting
         sceneView.apply {
             mainLightNode?.let { light ->
@@ -54,7 +54,7 @@ class HouseSceneRenderer(
         scope.launch {
             try {
                 // 1. Create a Ground Plane so characters don't float in void
-                // Reusing tom.glb as a base if we don't have a plane.glb, 
+                // Reusing tom.glb as a base if we don't have a plane.glb,
                 // but highly flattened and scaled.
                 val groundInstance = sceneView.modelLoader.createModelInstance("models/tom.glb")
                 if (groundInstance != null) {
@@ -95,7 +95,6 @@ class HouseSceneRenderer(
                 } else {
                     Log.e(TAG, "Failed to create Angela model instance")
                 }
-                
             } catch (e: Exception) {
                 Log.e(TAG, "Error loading 3D models: ${e.message}")
             }
@@ -107,12 +106,12 @@ class HouseSceneRenderer(
      */
     fun switchToRoom(room: HouseRoom, color: Int) {
         sceneView.setBackgroundColor(color)
-        
+
         // Adjust ground color based on room type
         groundNode?.let { ground ->
-             // Optional: change floor tint if API supports it
+            // Optional: change floor tint if API supports it
         }
-        
+
         Log.d(TAG, "Switched room to ${room.name} with color: $color")
     }
 

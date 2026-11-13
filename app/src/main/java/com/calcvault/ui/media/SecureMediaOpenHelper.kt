@@ -586,9 +586,7 @@ object SecureMediaOpenHelper {
     private fun canPreviewFile(mimeType: String): Boolean {
         val lowercaseMime = mimeType.lowercase()
         // PDF and text files can be previewed
-        return lowercaseMime.contains("pdf") || 
-               lowercaseMime.contains("text") || 
-               lowercaseMime.contains("plain")
+        return lowercaseMime.contains("pdf") || lowercaseMime.contains("text") || lowercaseMime.contains("plain")
     }
 
     private fun showDocument(activity: Activity, media: MaterializedMedia) {
@@ -655,4 +653,3 @@ object SecureMediaOpenHelper {
         }
     }
 }
-

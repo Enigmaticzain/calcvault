@@ -20,7 +20,7 @@ data class Particle(
     var y: Float,
     var vx: Float,
     var vy: Float,
-    var life: Float = 1f,      // 1.0 = just born, 0.0 = dead
+    var life: Float = 1f, // 1.0 = just born, 0.0 = dead
     var decay: Float = 0.015f,
     var size: Float = 12f,
     var rotation: Float = 0f,
@@ -79,22 +79,34 @@ class ParticleEngine {
                 rotationSpeed = random.nextFloat() * 5f
             )
             ParticleType.BUBBLE -> Particle(
-                x = x + (random.nextFloat() - 0.5f) * 30f, y = y,
-                vx = (random.nextFloat() - 0.5f) * 0.8f, vy = -0.8f - random.nextFloat() * 1.2f,
-                size = 8f + random.nextFloat() * 12f, decay = 0.008f,
-                type = type, color = Color.parseColor("#80D8FF")
+                x = x + (random.nextFloat() - 0.5f) * 30f,
+                y = y,
+                vx = (random.nextFloat() - 0.5f) * 0.8f,
+                vy = -0.8f - random.nextFloat() * 1.2f,
+                size = 8f + random.nextFloat() * 12f,
+                decay = 0.008f,
+                type = type,
+                color = Color.parseColor("#80D8FF")
             )
             ParticleType.MUSIC_NOTE -> Particle(
-                x = x, y = y,
-                vx = (random.nextFloat() - 0.5f) * 1.5f, vy = -1.5f - random.nextFloat(),
-                size = 18f, decay = 0.015f,
-                type = type, color = Color.parseColor("#7C4DFF")
+                x = x,
+                y = y,
+                vx = (random.nextFloat() - 0.5f) * 1.5f,
+                vy = -1.5f - random.nextFloat(),
+                size = 18f,
+                decay = 0.015f,
+                type = type,
+                color = Color.parseColor("#7C4DFF")
             )
             ParticleType.SLEEP_Z -> Particle(
-                x = x + 15f, y = y - 40f,
-                vx = 0.3f, vy = -0.6f,
-                size = 16f + random.nextFloat() * 8f, decay = 0.008f,
-                type = type, color = Color.parseColor("#90CAF9")
+                x = x + 15f,
+                y = y - 40f,
+                vx = 0.3f,
+                vy = -0.6f,
+                size = 16f + random.nextFloat() * 8f,
+                decay = 0.008f,
+                type = type,
+                color = Color.parseColor("#90CAF9")
             )
             ParticleType.SPARKLE -> Particle(
                 x = x + (random.nextFloat() - 0.5f) * 60f, y = y + (random.nextFloat() - 0.5f) * 60f,
@@ -104,37 +116,58 @@ class ParticleEngine {
                 rotationSpeed = random.nextFloat() * 8f
             )
             ParticleType.WATER_DROP -> Particle(
-                x = x + (random.nextFloat() - 0.5f) * 40f, y = y,
-                vx = (random.nextFloat() - 0.5f) * 0.5f, vy = 2f + random.nextFloat() * 3f,
-                size = 6f + random.nextFloat() * 4f, decay = 0.025f,
-                type = type, color = Color.parseColor("#4FC3F7")
+                x = x + (random.nextFloat() - 0.5f) * 40f,
+                y = y,
+                vx = (random.nextFloat() - 0.5f) * 0.5f,
+                vy = 2f + random.nextFloat() * 3f,
+                size = 6f + random.nextFloat() * 4f,
+                decay = 0.025f,
+                type = type,
+                color = Color.parseColor("#4FC3F7")
             )
             ParticleType.STEAM -> Particle(
-                x = x + (random.nextFloat() - 0.5f) * 20f, y = y,
-                vx = (random.nextFloat() - 0.5f) * 0.5f, vy = -0.5f - random.nextFloat() * 0.5f,
-                size = 15f + random.nextFloat() * 10f, decay = 0.01f,
-                type = type, color = Color.argb(100, 255, 255, 255)
+                x = x + (random.nextFloat() - 0.5f) * 20f,
+                y = y,
+                vx = (random.nextFloat() - 0.5f) * 0.5f,
+                vy = -0.5f - random.nextFloat() * 0.5f,
+                size = 15f + random.nextFloat() * 10f,
+                decay = 0.01f,
+                type = type,
+                color = Color.argb(100, 255, 255, 255)
             )
             ParticleType.TEAR -> Particle(
-                x = x, y = y,
-                vx = 0f, vy = 1.5f + random.nextFloat(),
-                size = 6f, decay = 0.03f,
-                type = type, color = Color.parseColor("#64B5F6")
+                x = x,
+                y = y,
+                vx = 0f,
+                vy = 1.5f + random.nextFloat(),
+                size = 6f,
+                decay = 0.03f,
+                type = type,
+                color = Color.parseColor("#64B5F6")
             )
             ParticleType.CONFETTI -> Particle(
                 x = x, y = y,
                 vx = (random.nextFloat() - 0.5f) * 6f, vy = -3f - random.nextFloat() * 4f,
                 size = 8f + random.nextFloat() * 4f, decay = 0.012f,
-                type = type, color = arrayOf(
-                    Color.parseColor("#FF4081"), Color.parseColor("#FFD740"),
-                    Color.parseColor("#69F0AE"), Color.parseColor("#40C4FF"),
+                type = type,
+                color = arrayOf(
+                    Color.parseColor("#FF4081"),
+                    Color.parseColor("#FFD740"),
+                    Color.parseColor("#69F0AE"),
+                    Color.parseColor("#40C4FF"),
                     Color.parseColor("#E040FB")
                 ).random(),
                 rotationSpeed = random.nextFloat() * 10f
             )
             else -> Particle(
-                x = x, y = y, vx = 0f, vy = -1f,
-                size = 8f, decay = 0.02f, type = type, color = color
+                x = x,
+                y = y,
+                vx = 0f,
+                vy = -1f,
+                size = 8f,
+                decay = 0.02f,
+                type = type,
+                color = color
             )
         }
     }

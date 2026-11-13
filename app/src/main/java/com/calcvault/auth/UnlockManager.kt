@@ -134,7 +134,7 @@ class UnlockManager private constructor(context: Context) {
         )
 
         @Volatile private var instance: UnlockManager? = null
-        
+
         // Optimized iterations for faster verification
         private const val PBKDF2_ITERATIONS_FAST = 50_000
 

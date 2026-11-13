@@ -191,7 +191,9 @@ class MoodActivity : AppCompatActivity() {
                         layout.removeAllViews()
                         buildUI()
                         true
-                    } else false
+                    } else {
+                        false
+                    }
                 }
             }
             grid.addView(moodLayout)

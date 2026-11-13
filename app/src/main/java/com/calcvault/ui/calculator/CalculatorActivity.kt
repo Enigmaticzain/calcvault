@@ -56,7 +56,7 @@ class CalculatorActivity : AppCompatActivity() {
         ThemeApplicator.applyActive(this)
 
         viewModel = ViewModelProvider(this)[CalculatorViewModel::class.java]
-        
+
         // Attempt auto-connection if already paired with partner
         attemptAutoConnection()
         startServerService()

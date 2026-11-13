@@ -96,13 +96,12 @@ class CompanionBridgeService : Service() {
             bridgeServer = server
             Log.i(TAG, "Bridge listening on ws://$host:${CompanionBridgeConstants.BRIDGE_PORT}${CompanionBridgeConstants.BRIDGE_PATH}")
             Log.i(TAG, "Pairing code issued: ${ticket.pairingCode} (expires ${ticket.expiresAt})")
-            
+
             // Start Signaling Server on a related port
             val sigServer = SignalingServer(CompanionBridgeConstants.SIGNALING_PORT)
             sigServer.start()
             signalingServer = sigServer
             Log.i(TAG, "Signaling server listening on http://$host:${CompanionBridgeConstants.SIGNALING_PORT}")
-            
         }.onFailure { err ->
             Log.e(TAG, "Failed to start bridge server", err)
             server.shutdown()

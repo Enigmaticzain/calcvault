@@ -212,7 +212,7 @@ class ThemeEngine(private val context: Context) {
         // ========================================
         // SANCTUARY THEMES (Romantic Backdrops)
         // ========================================
-        
+
         val THEME_SANCTUARY_STARGAZING = CalcVaultTheme(
             type = ThemeType.SANCTUARY_STARGAZING,
             backgroundStart = 0xFF0F0A1A.toInt(),
@@ -326,7 +326,7 @@ class ThemeEngine(private val context: Context) {
 
         fun getGlobalTheme(): CalcVaultTheme {
             lockedTheme?.let { return it }
-            
+
             // Lazy load theme on first access on first access
             if (currentTheme == null && !themeInitialized) {
                 themeInitialized = true
@@ -344,7 +344,7 @@ class ThemeEngine(private val context: Context) {
                 } catch (e: Exception) {}
                 currentTheme = THEME_DARK
             }
-            
+
             return if (isAdaptiveMode) {
                 val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
                 if (hour in 7..19) THEME_LIGHT else THEME_DARK
@@ -352,7 +352,7 @@ class ThemeEngine(private val context: Context) {
                 currentTheme ?: THEME_DARK
             }
         }
-        
+
         fun getThemeByType(type: ThemeType): CalcVaultTheme = when (type) {
             ThemeType.DARK -> THEME_DARK
             ThemeType.LIGHT -> THEME_LIGHT
@@ -395,24 +395,24 @@ class ThemeEngine(private val context: Context) {
             ThemeType.SANCTUARY_COUCHFIREPLACE to "Couch Fireplace"
         )
 
-            fun deserializeTheme(json: String): CalcVaultTheme {
-                val j = JSONObject(json)
-                return CalcVaultTheme(
-                    type = ThemeType.valueOf(j.getString("type")),
-                    backgroundStart = j.getInt("bgStart"),
-                    backgroundEnd = j.getInt("bgEnd"),
-                    surfaceColor = j.getInt("surface"),
-                    primaryText = j.getInt("primary"),
-                    secondaryText = j.getInt("secondary"),
-                    accentColor = j.getInt("accent"),
-                    sentBubble = j.getInt("sent"),
-                    receivedBubble = j.getInt("recv"),
-                    statusBarColor = j.getInt("status"),
-                    navBarColor = j.getInt("nav"),
-                    glowColor = j.getInt("glow"),
-                    backgroundImage = j.optString("bgImage").ifEmpty { null }
-                )
-            }
+        fun deserializeTheme(json: String): CalcVaultTheme {
+            val j = JSONObject(json)
+            return CalcVaultTheme(
+                type = ThemeType.valueOf(j.getString("type")),
+                backgroundStart = j.getInt("bgStart"),
+                backgroundEnd = j.getInt("bgEnd"),
+                surfaceColor = j.getInt("surface"),
+                primaryText = j.getInt("primary"),
+                secondaryText = j.getInt("secondary"),
+                accentColor = j.getInt("accent"),
+                sentBubble = j.getInt("sent"),
+                receivedBubble = j.getInt("recv"),
+                statusBarColor = j.getInt("status"),
+                navBarColor = j.getInt("nav"),
+                glowColor = j.getInt("glow"),
+                backgroundImage = j.optString("bgImage").ifEmpty { null }
+            )
+        }
     }
 
     init {
@@ -523,5 +523,4 @@ class ThemeEngine(private val context: Context) {
         put("glow", theme.glowColor)
         theme.backgroundImage?.let { put("bgImage", it) }
     }.toString()
-
 }

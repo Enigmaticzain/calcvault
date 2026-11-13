@@ -150,7 +150,8 @@ object AntiHookMonitor {
                     if (r.critical) onCritical(r)
                 }
             },
-            intervalMs, intervalMs
+            intervalMs,
+            intervalMs
         )
         return t
     }

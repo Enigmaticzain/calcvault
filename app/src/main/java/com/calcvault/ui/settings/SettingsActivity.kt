@@ -11,7 +11,6 @@ import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Dispatchers
 import com.calcvault.auth.BiometricHelper
 import com.calcvault.auth.UnlockManager
@@ -142,7 +141,7 @@ class SettingsActivity : AppCompatActivity() {
         addAnimatedThemePicker()
         addAnimationModePicker()
         addAmbientBackgroundPicker()
-        
+
         addSettingRow("Set Chat Wallpaper", secondary = "Custom background for chats") {
             val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
@@ -242,14 +241,18 @@ class SettingsActivity : AppCompatActivity() {
         addDivider()
 
         addSectionTitle("📱 Connectivity")
-        
+
         // --- Added Messaging Connectivity Section ---
         addSectionTitle("Messaging Mode", color = theme.accentColor)
-        val mode = if (SessionManager.signalingUrl.isEmpty() || SessionManager.signalingUrl.contains("onrender.com")) "Relay (Render)" 
-                  else if (SessionManager.signalingUrl.contains(":43831")) "Laptop Bridge" 
-                  else "Custom / Direct"
+        val mode = if (SessionManager.signalingUrl.isEmpty() || SessionManager.signalingUrl.contains("onrender.com")) {
+            "Relay (Render)"
+        } else if (SessionManager.signalingUrl.contains(":43831")) {
+            "Laptop Bridge"
+        } else {
+            "Custom / Direct"
+        }
         addSettingRow("Current Mode", secondary = mode) { showConnectivityModeChooser() }
-        
+
         addSettingRow("Signaling Server URL", secondary = SessionManager.signalingUrl.ifBlank { "Default (Render)" }) {
             showSignalingUrlInput()
         }
@@ -656,7 +659,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun addThemePicker() {
         val theme = themeEngine.getCurrentTheme()
         addSectionTitle("Base Theme (Colors)")
-        
+
         // Standard themes row
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -694,7 +697,13 @@ class SettingsActivity : AppCompatActivity() {
         // Sanctuary themes section
         addSectionTitle("Sanctuary Themes (Romantic)")
         val sanctuaryNames = listOf(
-            "Stargazing", "Rainy Cafe", "Sunrise", "Autumn Park", "Beach", "Snow", "Fireplace"
+            "Stargazing",
+            "Rainy Cafe",
+            "Sunrise",
+            "Autumn Park",
+            "Beach",
+            "Snow",
+            "Fireplace"
         )
         val sanctuaryTypes = listOf(
             ThemeEngine.ThemeType.SANCTUARY_STARGAZING,
@@ -712,7 +721,7 @@ class SettingsActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 setPadding(32, 12, 32, 12)
             }
-            
+
             for (j in 0..2) {
                 if (i + j < sanctuaryNames.size) {
                     val name = sanctuaryNames[i + j]
@@ -722,13 +731,13 @@ class SettingsActivity : AppCompatActivity() {
                         textSize = 11f
                         setBackgroundColor(0xFF2A2A35.toInt())
                         setTextColor(
-                            if (SessionManager.themeType == type.name.lowercase()) 
-                                theme.accentColor 
-                            else 0xFFBBBBBB.toInt()
+                            if (SessionManager.themeType == type.name.lowercase()) {
+                                theme.accentColor
+                            } else {
+                                0xFFBBBBBB.toInt()
+                            }
                         )
-                        layoutParams = LinearLayout.LayoutParams(0, -2, 1f).also { 
-                            it.setMargins(4, 0, 4, 0) 
-                        }
+                        layoutParams = LinearLayout.LayoutParams(0, -2, 1f).also { it.setMargins(4, 0, 4, 0) }
                         setOnClickListener {
                             SessionManager.themeType = type.name.lowercase()
                             themeEngine.setTheme(type)
@@ -917,7 +926,7 @@ class SettingsActivity : AppCompatActivity() {
         val etKeyword = EditText(this).apply { hint = "Keyword (e.g. hello)" }
         val etEmoji = EditText(this).apply { hint = "Emoji (e.g. 👋)" }
         val etIntensity = EditText(this).apply { hint = "Intensity (1-50)"; inputType = android.text.InputType.TYPE_CLASS_NUMBER }
-        
+
         layout.addView(etKeyword)
         layout.addView(etEmoji)
         layout.addView(etIntensity)
@@ -929,7 +938,7 @@ class SettingsActivity : AppCompatActivity() {
                 val keyword = etKeyword.text.toString().trim()
                 val emoji = etEmoji.text.toString().trim()
                 val intensity = etIntensity.text.toString().toIntOrNull() ?: 15
-                
+
                 if (keyword.isNotEmpty() && emoji.isNotEmpty()) {
                     val currentJson = unlockManager.getCustomTriggersJson()
                     val arr = org.json.JSONArray(currentJson)
@@ -1002,11 +1011,11 @@ class SettingsActivity : AppCompatActivity() {
             .setTitle("⚠️ Permanent Selection")
             .setMessage(
                 "You are about to permanently lock this device as:\n\n" +
-                "Identity: $displayName\n" +
-                "Character: $character\n\n" +
-                "This CANNOT be undone. The app will permanently auto-connect " +
-                "with your partner's device on every launch.\n\n" +
-                "Are you sure?"
+                    "Identity: $displayName\n" +
+                    "Character: $character\n\n" +
+                    "This CANNOT be undone. The app will permanently auto-connect " +
+                    "with your partner's device on every launch.\n\n" +
+                    "Are you sure?"
             )
             .setPositiveButton("Yes, I am $displayName") { _, _ ->
                 com.calcvault.sync.PermanentPairManager.selectIdentity(role)

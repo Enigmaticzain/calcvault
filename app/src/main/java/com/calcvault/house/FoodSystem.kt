@@ -89,27 +89,32 @@ object FoodMixer {
 
     private val specialCombinations = mapOf(
         setOf("apple", "banana") to SmoothieResult(
-            "Tropical Blast", "🥤",
+            "Tropical Blast",
+            "🥤",
             FoodItem("smoothie_tropical", "Tropical Blast", "🥤", FoodCategory.SMOOTHIE, 18f, 8f, 3f, description = "Fruity paradise"),
             "😍"
         ),
         setOf("strawberry", "milk") to SmoothieResult(
-            "Strawberry Shake", "🥤",
+            "Strawberry Shake",
+            "🥤",
             FoodItem("smoothie_strawberry", "Strawberry Shake", "🥤", FoodCategory.SMOOTHIE, 16f, 12f, 4f, description = "Angela's special"),
             "🤩"
         ),
         setOf("coffee", "milk") to SmoothieResult(
-            "Latte", "☕",
+            "Latte",
+            "☕",
             FoodItem("latte", "Latte", "☕", FoodCategory.SMOOTHIE, 5f, 6f, 18f, description = "Smooth caffeine"),
             "😊"
         ),
         setOf("cookie", "milk") to SmoothieResult(
-            "Cookie Milkshake", "🥤",
+            "Cookie Milkshake",
+            "🥤",
             FoodItem("cookie_shake", "Cookie Milkshake", "🥤", FoodCategory.SMOOTHIE, 18f, 15f, 2f, description = "Cookies & cream"),
             "🤤"
         ),
         setOf("watermelon", "ice_cream") to SmoothieResult(
-            "Summer Frost", "🧊",
+            "Summer Frost",
+            "🧊",
             FoodItem("summer_frost", "Summer Frost", "🧊", FoodCategory.SMOOTHIE, 15f, 14f, 2f, description = "Frozen delight"),
             "😎"
         )

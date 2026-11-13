@@ -7,9 +7,9 @@ import androidx.room.PrimaryKey
 data class CryptoKey(
     @PrimaryKey
     val id: String,
-    val keyType: String,        // "identity", "signed_prekey", "one_time_prekey"
+    val keyType: String, // "identity", "signed_prekey", "one_time_prekey"
     val publicKey: ByteArray,
-    val privateKey: ByteArray,  // Encrypted with master password before storage
+    val privateKey: ByteArray, // Encrypted with master password before storage
     val createdAt: Long = System.currentTimeMillis(),
     val isActive: Boolean = true
 )
